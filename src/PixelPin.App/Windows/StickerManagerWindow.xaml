@@ -1,0 +1,54 @@
+<Window x:Class="PixelPin.Windows.StickerManagerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="PixelPin Sticker Manager"
+        Width="840"
+        Height="560"
+        MinWidth="650"
+        MinHeight="430"
+        WindowStartupLocation="CenterScreen">
+  <DockPanel Margin="16">
+    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+      <TextBlock FontSize="19" FontWeight="SemiBold" Text="Sticker manager" />
+      <TextBlock Margin="0,4,0,0" Foreground="DimGray"
+                 Text="Organize active stickers, recover input, and close a selection or a group." />
+    </StackPanel>
+
+    <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="180" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="Group" />
+        <TextBox x:Name="GroupNameBox" Grid.Column="1" Padding="6" ToolTip="Blank means Ungrouped" />
+        <Button Grid.Column="2" Content="Assign" ToolTip="Assign selected sticker to this group" Click="AssignGroup_Click" />
+        <Button Grid.Column="3" Content="Close group" ToolTip="Close all stickers in this group" Click="CloseGroup_Click" />
+        <Button Grid.Column="4" Content="Refresh" ToolTip="Refresh active sticker list" Click="Refresh_Click" />
+        <Button Grid.Column="5" Content="Close all" ToolTip="Close every active sticker" Click="CloseAll_Click" />
+      </Grid>
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+        <Button Content="Bring forward" ToolTip="Bring selected sticker above other stickers" Click="BringForward_Click" />
+        <Button Content="Toggle top layer" ToolTip="Toggle whether selected sticker stays above normal windows" Click="ToggleTopLayer_Click" />
+        <Button Content="Toggle input" ToolTip="Toggle mouse-through for selected sticker" Click="ToggleInput_Click" />
+        <Button Content="Close selected" ToolTip="Close selected sticker" Click="CloseSelected_Click" />
+        <Button Content="Close manager" Click="Close_Click" />
+      </StackPanel>
+    </StackPanel>
+
+    <ListBox x:Name="StickerList" SelectionChanged="StickerList_SelectionChanged">
+      <ListBox.ItemTemplate>
+        <DataTemplate>
+          <StackPanel Margin="4">
+            <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" />
+            <TextBlock Margin="0,2,0,0" Foreground="DimGray" Text="{Binding ManagerDescription}" />
+          </StackPanel>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
+</Window>

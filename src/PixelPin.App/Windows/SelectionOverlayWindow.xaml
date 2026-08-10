@@ -1,0 +1,58 @@
+<Window x:Class="PixelPin.Windows.SelectionOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="PixelPin capture"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        Topmost="True"
+        PreviewKeyDown="Window_PreviewKeyDown"
+        Deactivated="Window_Deactivated">
+  <Canvas x:Name="Surface"
+          Background="Transparent"
+          MouseLeftButtonDown="Surface_MouseLeftButtonDown"
+          MouseMove="Surface_MouseMove"
+          MouseLeftButtonUp="Surface_MouseLeftButtonUp"
+          SizeChanged="Surface_SizeChanged">
+    <Image x:Name="ScreenshotImage" Stretch="Fill" IsHitTestVisible="False" />
+    <Path x:Name="Dimmer" Fill="#A6000000" IsHitTestVisible="False" />
+    <Rectangle x:Name="SelectionBorder" Stroke="#1D7BFF" StrokeThickness="2" Visibility="Collapsed" IsHitTestVisible="False" />
+
+    <Thumb x:Name="TopLeftHandle" Tag="Top,Left" Width="10" Height="10" Background="White" BorderBrush="#1D7BFF" BorderThickness="1"
+           Cursor="SizeNWSE" Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
+    <Thumb x:Name="TopHandle" Tag="Top" Width="10" Height="10" Background="White" BorderBrush="#1D7BFF" BorderThickness="1"
+           Cursor="SizeNS" Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
+    <Thumb x:Name="TopRightHandle" Tag="Top,Right" Width="10" Height="10" Background="White" BorderBrush="#1D7BFF" BorderThickness="1"
+           Cursor="SizeNESW" Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
+    <Thumb x:Name="RightHandle" Tag="Right" Width="10" Height="10" Background="White" BorderBrush="#1D7BFF" BorderThickness="1"
+           Cursor="SizeWE" Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
+    <Thumb x:Name="BottomRightHandle" Tag="Bottom,Right" Width="10" Height="10" Background="White" BorderBrush="#1D7BFF" BorderThickness="1"
+           Cursor="SizeNWSE" Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
+    <Thumb x:Name="BottomHandle" Tag="Bottom" Width="10" Height="10" Background="White" BorderBrush="#1D7BFF" BorderThickness="1"
+           Cursor="SizeNS" Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
+    <Thumb x:Name="BottomLeftHandle" Tag="Bottom,Left" Width="10" Height="10" Background="White" BorderBrush="#1D7BFF" BorderThickness="1"
+           Cursor="SizeNESW" Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
+    <Thumb x:Name="LeftHandle" Tag="Left" Width="10" Height="10" Background="White" BorderBrush="#1D7BFF" BorderThickness="1"
+           Cursor="SizeWE" Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
+
+    <Border x:Name="ReadoutPanel" Background="#E9212935" CornerRadius="4" Padding="8,5" IsHitTestVisible="False">
+      <TextBlock x:Name="ReadoutText" Foreground="White" FontFamily="Consolas" FontSize="12" />
+    </Border>
+
+    <Border x:Name="MagnifierPanel" Width="128" Height="128" Background="#F9232935" BorderBrush="White" BorderThickness="1" IsHitTestVisible="False">
+      <Image x:Name="MagnifierImage" Stretch="Fill" RenderOptions.BitmapScalingMode="NearestNeighbor" />
+    </Border>
+
+    <Border x:Name="Toolbar" Background="#FDFDFD" BorderBrush="#CFD6DF" BorderThickness="1" CornerRadius="4" Padding="4" Visibility="Collapsed">
+      <StackPanel Orientation="Horizontal">
+        <Button Content="Copy" ToolTip="Copy selection (Ctrl+C)" Click="Copy_Click" />
+        <Button Content="Save" ToolTip="Save a PNG (Ctrl+S)" Click="Save_Click" />
+        <Button Content="Pin" ToolTip="Pin to desktop (P)" Click="Pin_Click" />
+        <Button Content="Edit" ToolTip="Open the annotation editor" Click="Edit_Click" />
+        <Button Content="Cancel" ToolTip="Cancel capture (Esc)" Click="Cancel_Click" />
+      </StackPanel>
+    </Border>
+  </Canvas>
+</Window>

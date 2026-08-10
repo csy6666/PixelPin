@@ -1,0 +1,15 @@
+# Build output
+bin/
+obj/
+artifacts/
+TestResults/
+
+# Local IDE state
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Local application data when running from the repository
+.local/
