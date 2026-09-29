@@ -2,10 +2,13 @@ $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
 $project = Join-Path $root 'src\PixelPin.App\PixelPin.App.csproj'
+$iconScript = Join-Path $root 'scripts\Generate-Icon.ps1'
+$readmePath = Join-Path $root 'README.md'
 $artifactRoot = Join-Path $root 'artifacts'
 $publishDirectory = Join-Path $artifactRoot 'PixelPin-win-x64-portable'
-$zipPath = Join-Path $artifactRoot 'PixelPin-0.2.1-win-x64-portable.zip'
-$hashPath = Join-Path $artifactRoot 'SHA256SUMS.txt'
+$version = (dotnet msbuild $project -getProperty:Version -nologo | Select-Object -Last 1).Trim()
+$zipPath = Join-Path $artifactRoot "PixelPin-$version-win-x64-portable.zip"
+$hashPath = Join-Path $artifactRoot "SHA256SUMS-$version.txt"
 
 if (Test-Path -LiteralPath $publishDirectory) {
     Remove-Item -LiteralPath $publishDirectory -Recurse -Force
@@ -14,6 +17,8 @@ if (Test-Path -LiteralPath $zipPath) {
     Remove-Item -LiteralPath $zipPath -Force
 }
 New-Item -ItemType Directory -Path $artifactRoot -Force | Out-Null
+
+& $iconScript
 
 dotnet publish $project `
     -c Release `
@@ -26,14 +31,7 @@ dotnet publish $project `
 
 Get-ChildItem -LiteralPath $publishDirectory -Filter '*.pdb' -File | Remove-Item -Force
 
-$readme = @(
-    'PixelPin 0.2.1 Windows x64 portable package',
-    '',
-    'Run PixelPin.exe directly. No installation is required.',
-    'The application user interface is Simplified Chinese.',
-    'Settings and history are stored under %LocalAppData%\\PixelPin.'
-) -join [Environment]::NewLine
-Set-Content -LiteralPath (Join-Path $publishDirectory 'README.txt') -Value $readme -Encoding ascii
+Copy-Item -LiteralPath $readmePath -Destination (Join-Path $publishDirectory 'README.md')
 
 Compress-Archive -Path (Join-Path $publishDirectory '*') -DestinationPath $zipPath -CompressionLevel Optimal
 $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash

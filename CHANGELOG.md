@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2
+
+- Added the original PixelPin application icon to the executable, windows, system tray, and portable package.
+
 ## 0.2.1
 
 - 将窗口、托盘菜单、工具提示、错误提示和诊断文本统一为简体中文。

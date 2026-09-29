@@ -20,7 +20,7 @@ dotnet run --project .\src\PixelPin.App\PixelPin.App.csproj
 powershell -ExecutionPolicy Bypass -File .\scripts\Publish-Portable.ps1
 ```
 
-输出目录为 `artifacts\PixelPin-win-x64-portable`，压缩包为 `artifacts\PixelPin-0.2.1-win-x64-portable.zip`。设置和历史记录保存在当前 Windows 用户的 `%LocalAppData%\PixelPin`，删除程序目录不会删除这些本地数据。
+输出目录为 `artifacts\PixelPin-win-x64-portable`，ZIP 文件名带有当前版本号。设置和历史记录保存在当前 Windows 用户的 `%LocalAppData%\PixelPin`，删除程序目录不会删除这些本地数据。
 
 ## 功能
 

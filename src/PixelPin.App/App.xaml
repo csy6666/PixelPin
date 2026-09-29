@@ -3,12 +3,16 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              ShutdownMode="OnExplicitShutdown">
   <Application.Resources>
+    <BitmapImage x:Key="PixelPinIcon" UriSource="pack://application:,,,/Assets/PixelPin.png" />
     <SolidColorBrush x:Key="AccentBrush" Color="#1677FF" />
     <SolidColorBrush x:Key="PanelBrush" Color="#F7F9FC" />
     <Style TargetType="Button">
       <Setter Property="Padding" Value="10,6" />
       <Setter Property="Margin" Value="4" />
       <Setter Property="MinHeight" Value="30" />
+    </Style>
+    <Style TargetType="Window">
+      <Setter Property="Icon" Value="{StaticResource PixelPinIcon}" />
     </Style>
   </Application.Resources>
 </Application>

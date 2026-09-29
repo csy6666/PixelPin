@@ -6,6 +6,7 @@ namespace PixelPin.Services;
 public sealed class TrayService : IDisposable
 {
     private readonly NotifyIcon _icon;
+    private readonly Icon _applicationIcon;
 
     public TrayService(
         Action captureRegion,
@@ -38,10 +39,12 @@ public sealed class TrayService : IDisposable
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("退出", null, (_, _) => exit());
 
+        _applicationIcon = Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? Application.ExecutablePath)
+            ?? (Icon)SystemIcons.Application.Clone();
         _icon = new NotifyIcon
         {
             Text = "PixelPin",
-            Icon = SystemIcons.Application,
+            Icon = _applicationIcon,
             ContextMenuStrip = menu,
             Visible = true,
         };
@@ -58,6 +61,7 @@ public sealed class TrayService : IDisposable
     {
         _icon.Visible = false;
         _icon.Dispose();
+        _applicationIcon.Dispose();
     }
 
     public void ShowMessage(string title, string message)
