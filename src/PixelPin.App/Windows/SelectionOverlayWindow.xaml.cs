@@ -265,7 +265,7 @@ public partial class SelectionOverlayWindow : Window
         }
         catch (Exception exception)
         {
-            MessageBox.Show(exception.Message, "PixelPin capture", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(exception.Message, "PixelPin 截图", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

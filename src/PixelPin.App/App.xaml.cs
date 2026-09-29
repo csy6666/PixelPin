@@ -13,7 +13,7 @@ public partial class App : Application
         DispatcherUnhandledException += (_, args) =>
         {
             _controller?.ReportUnhandled(args.Exception);
-            _controller?.ShowError("Unexpected application error", args.Exception.Message);
+            _controller?.ShowError("应用程序错误", args.Exception.Message);
             args.Handled = true;
         };
 

@@ -58,20 +58,20 @@ public partial class StickyWindow : Window
 
     public Guid Id { get; } = Guid.NewGuid();
 
-    public string GroupName { get; private set; } = "Ungrouped";
+    public string GroupName { get; private set; } = "未分组";
 
     public bool IsAlwaysOnTop => Topmost;
 
-    public string DisplayName => $"{_image.PixelWidth} x {_image.PixelHeight} sticker";
+    public string DisplayName => $"{_image.PixelWidth} x {_image.PixelHeight} 贴图";
 
-    public string ManagerDescription => $"{GroupName} | {(IsAlwaysOnTop ? "top layer" : "normal layer")} | {(IsMouseThrough ? "mouse-through" : "interactive")}";
+    public string ManagerDescription => $"{GroupName} | {(IsAlwaysOnTop ? "置顶" : "普通层级")} | {(IsMouseThrough ? "鼠标穿透" : "可交互")}";
 
     public event EventHandler? StickerStateChanged;
 
     public void SetGroupName(string? groupName)
     {
         GroupName = string.IsNullOrWhiteSpace(groupName)
-            ? "Ungrouped"
+            ? "未分组"
             : groupName.Trim()[..Math.Min(48, groupName.Trim().Length)];
         NotifyStateChanged();
     }
@@ -301,7 +301,7 @@ public partial class StickyWindow : Window
         }
         catch (Exception exception)
         {
-            MessageBox.Show(exception.Message, "PixelPin sticker", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(exception.Message, "PixelPin 贴图", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

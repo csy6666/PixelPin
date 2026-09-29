@@ -18,7 +18,7 @@ public sealed class ScreenCaptureService
         var bounds = SystemInformation.VirtualScreen;
         if (bounds.Width <= 0 || bounds.Height <= 0)
         {
-            throw new InvalidOperationException("Windows did not report an available desktop.");
+            throw new InvalidOperationException("Windows 没有报告可用的桌面。");
         }
 
         using var bitmap = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
@@ -32,7 +32,7 @@ public sealed class ScreenCaptureService
         var window = NativeMethods.GetForegroundWindow();
         if (window == IntPtr.Zero || NativeMethods.IsIconic(window))
         {
-            throw new InvalidOperationException("No visible foreground window is available to capture.");
+            throw new InvalidOperationException("没有可截图的可见前台窗口。");
         }
 
         return CaptureWindowHandle(window, "PixelPin_window_{yyyyMMdd_HHmmss}");
@@ -96,7 +96,7 @@ public sealed class ScreenCaptureService
     {
         if (window.Handle == IntPtr.Zero || !NativeMethods.IsWindowVisible(window.Handle) || NativeMethods.IsIconic(window.Handle))
         {
-            throw new InvalidOperationException("The selected window is no longer available. Refresh the list and choose it again.");
+            throw new InvalidOperationException("所选窗口已不可用，请刷新列表后重新选择。");
         }
 
         return CaptureWindowHandle(window.Handle, "PixelPin_window_{yyyyMMdd_HHmmss}");
@@ -106,7 +106,7 @@ public sealed class ScreenCaptureService
     {
         if (!NativeMethods.GetWindowRect(window, out var rect) || rect.Width <= 0 || rect.Height <= 0)
         {
-            throw new InvalidOperationException("Windows could not determine the active window bounds.");
+            throw new InvalidOperationException("Windows 无法确定当前窗口边界。");
         }
 
         var desktop = CaptureDesktop();
@@ -119,7 +119,7 @@ public sealed class ScreenCaptureService
         crop = Intersect(crop, new Int32Rect(0, 0, desktop.Image.PixelWidth, desktop.Image.PixelHeight));
         if (crop.Width <= 0 || crop.Height <= 0)
         {
-            throw new InvalidOperationException("The active window is outside the capturable desktop area.");
+            throw new InvalidOperationException("当前窗口位于可截图桌面区域之外。");
         }
 
         return new CaptureOutcome(BitmapUtilities.Crop(desktop.Image, crop), suggestedFileName);
@@ -133,7 +133,7 @@ public sealed class ScreenCaptureService
         }
         catch
         {
-            return "unknown";
+            return "未知进程";
         }
     }
 

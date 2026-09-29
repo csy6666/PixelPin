@@ -51,11 +51,11 @@ public sealed class SettingsService
     {
         if (!File.Exists(path))
         {
-            throw new FileNotFoundException("The selected settings file no longer exists.", path);
+            throw new FileNotFoundException("所选设置文件已不存在。", path);
         }
 
         var settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path), JsonOptions)
-            ?? throw new InvalidDataException("The settings file does not contain a valid PixelPin settings object.");
+            ?? throw new InvalidDataException("设置文件不包含有效的 PixelPin 设置对象。");
         settings.Normalize();
         return settings;
     }
@@ -66,7 +66,7 @@ public sealed class SettingsService
         var directory = Path.GetDirectoryName(path);
         if (string.IsNullOrWhiteSpace(directory))
         {
-            throw new InvalidOperationException("Choose a file path with a parent folder.");
+            throw new InvalidOperationException("请选择包含父文件夹的文件路径。");
         }
 
         Directory.CreateDirectory(directory);

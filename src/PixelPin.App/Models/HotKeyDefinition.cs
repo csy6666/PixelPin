@@ -11,7 +11,7 @@ public readonly record struct HotKeyDefinition(ModifierKeys Modifiers, Key Key)
 
         if (string.IsNullOrWhiteSpace(input))
         {
-            error = "A shortcut is required.";
+            error = "必须填写快捷键。";
             return false;
         }
 
@@ -42,13 +42,13 @@ public readonly record struct HotKeyDefinition(ModifierKeys Modifiers, Key Key)
                             or Key.LeftAlt or Key.RightAlt or Key.LeftShift or Key.RightShift
                             or Key.LWin or Key.RWin)
                     {
-                        error = $"'{rawPart}' is not a supported key.";
+                        error = $"“{rawPart}”不是支持的按键。";
                         return false;
                     }
 
                     if (key != Key.None)
                     {
-                        error = "A shortcut may contain only one non-modifier key.";
+                        error = "快捷键只能包含一个非修饰键。";
                         return false;
                     }
 
@@ -59,7 +59,7 @@ public readonly record struct HotKeyDefinition(ModifierKeys Modifiers, Key Key)
 
         if (key == Key.None)
         {
-            error = "A shortcut must include a key such as F1 or P.";
+            error = "快捷键必须包含一个按键，例如 F1 或 P。";
             return false;
         }
 

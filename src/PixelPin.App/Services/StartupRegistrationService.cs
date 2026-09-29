@@ -15,7 +15,7 @@ public sealed class StartupRegistrationService
         if (enabled)
         {
             var processPath = Environment.ProcessPath
-                ?? throw new InvalidOperationException("The executable path is unavailable.");
+                ?? throw new InvalidOperationException("无法获取程序路径。");
             key.SetValue(ValueName, $"\"{processPath}\"");
         }
         else

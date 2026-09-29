@@ -38,7 +38,7 @@ public sealed class AppController : IDisposable
         Settings = _settingsService.Load();
         _historyService.Load();
         _historyService.TrimToLimits(Settings.HistoryLimit, Settings.HistoryDiskLimitMegabytes);
-        _logService.Info("Application", "Controller initialized.");
+        _logService.Info("应用程序", "控制器已初始化。");
     }
 
     public AppSettings Settings { get; private set; }
@@ -46,16 +46,16 @@ public sealed class AppController : IDisposable
     public void Start(IReadOnlyCollection<string>? launchArguments = null)
     {
         AppPaths.EnsureDirectories();
-        _logService.Info("Application", "PixelPin started.");
+        _logService.Info("应用程序", "PixelPin 已启动。");
         _hotKeys = new HotKeyService();
         var skipHotKeys = launchArguments?.Contains("--no-hotkeys", StringComparer.OrdinalIgnoreCase) == true;
         if (!skipHotKeys && !RegisterHotKeys(Settings, out var hotKeyError))
         {
-            ShowError("PixelPin hotkey setup", hotKeyError);
+            ShowError("PixelPin 快捷键设置", hotKeyError);
         }
         else if (skipHotKeys)
         {
-            _logService.Info("Application", "Started with global hotkeys disabled by launch argument.");
+            _logService.Info("应用程序", "已通过启动参数禁用全局快捷键。");
         }
 
         TrySetStartupRegistration(Settings.StartWithWindows);
@@ -104,7 +104,7 @@ public sealed class AppController : IDisposable
 
     public void ReportUnhandled(Exception exception)
     {
-        _logService.Error("Unhandled exception", exception.Message, exception);
+        _logService.Error("未处理的异常", exception.Message, exception);
     }
 
     public string? ApplySettings(AppSettings candidate)
@@ -113,12 +113,12 @@ public sealed class AppController : IDisposable
 
         if (!HotKeyDefinition.TryParse(candidate.CaptureHotKey, out _, out var captureError))
         {
-            return $"Capture shortcut: {captureError}";
+            return $"截图快捷键：{captureError}";
         }
 
         if (!HotKeyDefinition.TryParse(candidate.ToggleMouseThroughHotKey, out _, out var mouseThroughError))
         {
-            return $"Mouse-through shortcut: {mouseThroughError}";
+            return $"鼠标穿透快捷键：{mouseThroughError}";
         }
 
         var previous = Settings;
@@ -127,7 +127,7 @@ public sealed class AppController : IDisposable
         {
             _hotKeys?.Clear();
             RegisterHotKeys(previous, out _);
-            return $"Could not register a global shortcut. It may already be in use. Windows said: {registrationError}";
+            return $"无法注册全局快捷键，可能已被其他程序占用。Windows 返回：{registrationError}";
         }
 
         try
@@ -161,7 +161,7 @@ public sealed class AppController : IDisposable
             if (overlays.Count == 0)
             {
                 _captureInProgress = false;
-                ShowError("PixelPin capture", "Windows did not report a capturable display.");
+                ShowError("PixelPin 截图", "Windows 没有报告可截图的显示器。");
                 return;
             }
 
@@ -208,7 +208,7 @@ public sealed class AppController : IDisposable
         catch (Exception exception)
         {
             _captureInProgress = false;
-            ShowError("PixelPin capture", exception.Message);
+            ShowError("PixelPin 截图", exception.Message);
         }
     }
 
@@ -220,7 +220,7 @@ public sealed class AppController : IDisposable
         }
         catch (Exception exception)
         {
-            ShowError("Active window capture", exception.Message);
+            ShowError("当前窗口截图", exception.Message);
         }
     }
 
@@ -247,14 +247,14 @@ public sealed class AppController : IDisposable
         {
             if (!Clipboard.ContainsImage())
             {
-                ShowError("Paste image", "The clipboard does not contain an image.");
+                ShowError("粘贴图片", "剪贴板中没有图片。");
                 return;
             }
 
             var image = Clipboard.GetImage();
             if (image is null)
             {
-                ShowError("Paste image", "Windows could not read the clipboard image.");
+                ShowError("粘贴图片", "Windows 无法读取剪贴板中的图片。");
                 return;
             }
 
@@ -267,7 +267,7 @@ public sealed class AppController : IDisposable
         }
         catch (Exception exception)
         {
-            ShowError("Paste image", exception.Message);
+            ShowError("粘贴图片", exception.Message);
         }
     }
 
@@ -275,8 +275,8 @@ public sealed class AppController : IDisposable
     {
         var dialog = new OpenFileDialog
         {
-            Title = "Open images as stickers",
-            Filter = "Image files|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff|All files|*.*",
+            Title = "打开图片作为贴图",
+            Filter = "图片文件|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff|所有文件|*.*",
             Multiselect = true,
         };
         if (dialog.ShowDialog() != true)
@@ -292,7 +292,7 @@ public sealed class AppController : IDisposable
             }
             catch (Exception exception)
             {
-                ShowError("Open image", $"{Path.GetFileName(file)} could not be opened: {exception.Message}");
+                ShowError("打开图片", $"无法打开 {Path.GetFileName(file)}：{exception.Message}");
             }
         }
     }
@@ -395,7 +395,7 @@ public sealed class AppController : IDisposable
         }
 
         _disposed = true;
-        _logService.Info("Application", "PixelPin is shutting down.");
+        _logService.Info("应用程序", "PixelPin 正在退出。");
         _tray?.Dispose();
         _hotKeys?.Dispose();
 
@@ -442,7 +442,7 @@ public sealed class AppController : IDisposable
         }
         catch (Exception exception)
         {
-            ShowError("PixelPin history", $"The image was captured, but local history could not be updated: {exception.Message}");
+            ShowError("PixelPin 历史记录", $"图片已截取，但无法更新本地历史记录：{exception.Message}");
         }
 
         if (Settings.CopyAfterCapture || action == CaptureAction.Copy)
@@ -474,7 +474,7 @@ public sealed class AppController : IDisposable
         }
         catch (Exception exception)
         {
-            ShowError("Clipboard", $"The image could not be copied: {exception.Message}");
+            ShowError("剪贴板", $"无法复制图片：{exception.Message}");
         }
     }
 
@@ -483,11 +483,11 @@ public sealed class AppController : IDisposable
         try
         {
             var saved = BitmapUtilities.SavePng(image, Settings.SaveDirectory, template ?? Settings.FileNameTemplate);
-            _tray?.ShowMessage("PixelPin", $"Saved {Path.GetFileName(saved)}");
+            _tray?.ShowMessage("PixelPin", $"已保存 {Path.GetFileName(saved)}");
         }
         catch (Exception exception)
         {
-            ShowError("Save capture", $"The image could not be saved: {exception.Message}");
+            ShowError("保存截图", $"无法保存图片：{exception.Message}");
         }
     }
 
@@ -496,11 +496,11 @@ public sealed class AppController : IDisposable
         try
         {
             var saved = BitmapUtilities.SaveJpeg(image, Settings.SaveDirectory, Settings.FileNameTemplate);
-            _tray?.ShowMessage("PixelPin", $"Saved {Path.GetFileName(saved)}");
+            _tray?.ShowMessage("PixelPin", $"已保存 {Path.GetFileName(saved)}");
         }
         catch (Exception exception)
         {
-            ShowError("Save JPEG", $"The image could not be saved: {exception.Message}");
+            ShowError("保存 JPEG", $"无法保存图片：{exception.Message}");
         }
     }
 
@@ -550,7 +550,7 @@ public sealed class AppController : IDisposable
         }
         catch (Exception exception)
         {
-            ShowError("PixelPin history", $"The image was opened, but local history could not be updated: {exception.Message}");
+            ShowError("PixelPin 历史记录", $"图片已打开，但无法更新本地历史记录：{exception.Message}");
         }
 
         ShowSticker(image);
@@ -626,7 +626,7 @@ public sealed class AppController : IDisposable
     {
         if (_lastSticker is null)
         {
-            _tray?.ShowMessage("PixelPin", "There is no sticker to toggle.");
+            _tray?.ShowMessage("PixelPin", "没有可切换的贴图。");
             return;
         }
 
@@ -634,15 +634,15 @@ public sealed class AppController : IDisposable
         _tray?.ShowMessage(
             "PixelPin",
             _lastSticker.IsMouseThrough
-                ? "Sticker is mouse-through. Press the configured shortcut to restore input."
-                : "Sticker input restored.");
+                ? "贴图已开启鼠标穿透。按设置的快捷键可恢复输入。"
+                : "贴图输入已恢复。");
     }
 
     private void ShowScrollingCaptureUnavailable()
     {
         MessageBox.Show(
-            "Scrolling capture is not enabled in this build. It requires an application-specific, tested scroll path and will not fabricate a stitched result. Use normal region capture instead.",
-            "PixelPin scrolling capture",
+            "此版本未启用滚动截图。该功能需要针对应用测试滚动路径，无法验证时不会伪造拼接结果。请改用普通区域截图。",
+            "PixelPin 滚动截图",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
     }
@@ -655,8 +655,8 @@ public sealed class AppController : IDisposable
         }
         catch (Exception exception)
         {
-            _logService.Error("Selected window capture", exception.Message, exception);
-            ShowError("Window capture", exception.Message);
+            _logService.Error("选择窗口截图", exception.Message, exception);
+            ShowError("窗口截图", exception.Message);
         }
     }
 
@@ -668,7 +668,7 @@ public sealed class AppController : IDisposable
         }
         catch (Exception exception)
         {
-            _tray?.ShowMessage("PixelPin", $"Startup setting could not be changed: {exception.Message}");
+            _tray?.ShowMessage("PixelPin", $"无法修改开机启动设置：{exception.Message}");
         }
     }
 
@@ -676,27 +676,27 @@ public sealed class AppController : IDisposable
     {
         var entry = Assembly.GetEntryAssembly()?.GetName();
         var report = new StringBuilder();
-        report.AppendLine("PixelPin diagnostics");
-        report.AppendLine($"Version: {entry?.Version?.ToString() ?? "unknown"}");
-        report.AppendLine($"Runtime: {Environment.Version}");
-        report.AppendLine($"OS: {Environment.OSVersion.VersionString}");
-        report.AppendLine($"Process architecture: {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}");
-        report.AppendLine($"Capture shortcut: {Settings.CaptureHotKey}");
-        report.AppendLine($"Mouse-through shortcut: {Settings.ToggleMouseThroughHotKey}");
-        report.AppendLine($"History items: {_historyService.Items.Count}");
-        report.AppendLine($"History cache limit: {Settings.HistoryDiskLimitMegabytes} MB");
-        report.AppendLine($"Active stickers: {_stickers.Count}");
-        report.AppendLine($"Local data: {AppPaths.Root}");
-        report.AppendLine($"Diagnostic log: {_logService.FilePath}");
+        report.AppendLine("PixelPin 诊断信息");
+        report.AppendLine($"版本：{entry?.Version?.ToString() ?? "未知"}");
+        report.AppendLine($"运行时：{Environment.Version}");
+        report.AppendLine($"操作系统：{Environment.OSVersion.VersionString}");
+        report.AppendLine($"进程架构：{System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}");
+        report.AppendLine($"截图快捷键：{Settings.CaptureHotKey}");
+        report.AppendLine($"鼠标穿透快捷键：{Settings.ToggleMouseThroughHotKey}");
+        report.AppendLine($"历史记录数量：{_historyService.Items.Count}");
+        report.AppendLine($"历史缓存上限：{Settings.HistoryDiskLimitMegabytes} MB");
+        report.AppendLine($"当前贴图数量：{_stickers.Count}");
+        report.AppendLine($"本地数据：{AppPaths.Root}");
+        report.AppendLine($"诊断日志：{_logService.FilePath}");
         report.AppendLine();
-        report.AppendLine("Displays:");
+        report.AppendLine("显示器：");
         foreach (var screen in System.Windows.Forms.Screen.AllScreens)
         {
-            report.AppendLine($"- {screen.DeviceName}: {screen.Bounds.Width} x {screen.Bounds.Height} at {screen.Bounds.Left},{screen.Bounds.Top}; primary={screen.Primary}");
+            report.AppendLine($"- {screen.DeviceName}：{screen.Bounds.Width} x {screen.Bounds.Height}，位置 {screen.Bounds.Left},{screen.Bounds.Top}；主显示器={screen.Primary}");
         }
 
         report.AppendLine();
-        report.AppendLine("Recent local diagnostics:");
+        report.AppendLine("最近的本地诊断记录：");
         report.Append(_logService.ReadRecent(6000));
         return report.ToString();
     }
@@ -714,15 +714,15 @@ public sealed class AppController : IDisposable
         }
         catch (Exception exception)
         {
-            _logService.Error("Open local data", exception.Message, exception);
-            ShowError("Open local data", exception.Message);
+            _logService.Error("打开本地数据", exception.Message, exception);
+            ShowError("打开本地数据", exception.Message);
         }
     }
 
     private void ClearDiagnostics()
     {
         _logService.Clear();
-        _logService.Info("Diagnostics", "Local diagnostic log cleared by user.");
+        _logService.Info("诊断", "用户已清除本地诊断日志。");
     }
 
     private void RunOnUi(Action action)

@@ -22,21 +22,21 @@ public sealed class TrayService : IDisposable
         Action exit)
     {
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Capture region", null, (_, _) => captureRegion());
-        menu.Items.Add("Capture active window", null, (_, _) => captureWindow());
-        menu.Items.Add("Choose a window to capture", null, (_, _) => chooseWindow());
-        menu.Items.Add("Scrolling capture", null, (_, _) => scrollingCapture());
+        menu.Items.Add("区域截图", null, (_, _) => captureRegion());
+        menu.Items.Add("截取当前窗口", null, (_, _) => captureWindow());
+        menu.Items.Add("选择窗口截图", null, (_, _) => chooseWindow());
+        menu.Items.Add("滚动截图", null, (_, _) => scrollingCapture());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Paste image as sticker", null, (_, _) => pasteImage());
-        menu.Items.Add("Open image file", null, (_, _) => openImages());
+        menu.Items.Add("粘贴图片为贴图", null, (_, _) => pasteImage());
+        menu.Items.Add("打开图片文件", null, (_, _) => openImages());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("History", null, (_, _) => showHistory());
-        menu.Items.Add("Sticker manager", null, (_, _) => showStickerManager());
-        menu.Items.Add("Settings", null, (_, _) => showSettings());
-        menu.Items.Add("Privacy and diagnostics", null, (_, _) => showDiagnostics());
-        menu.Items.Add("Close all stickers", null, (_, _) => closeAllStickers());
+        menu.Items.Add("历史记录", null, (_, _) => showHistory());
+        menu.Items.Add("贴图管理", null, (_, _) => showStickerManager());
+        menu.Items.Add("设置", null, (_, _) => showSettings());
+        menu.Items.Add("隐私与诊断", null, (_, _) => showDiagnostics());
+        menu.Items.Add("关闭所有贴图", null, (_, _) => closeAllStickers());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Exit", null, (_, _) => exit());
+        menu.Items.Add("退出", null, (_, _) => exit());
 
         _icon = new NotifyIcon
         {
