@@ -1,19 +1,28 @@
-# PixelPin
+# PixelPin 截图贴图工具
 
-PixelPin is a native Windows screenshot and desktop-sticker utility implemented independently with .NET 8 and WPF.
+PixelPin 是一款使用 .NET 8 和 WPF 独立实现的 Windows 原生截图与桌面贴图工具。界面为简体中文，截图、历史记录和诊断数据默认只保存在本机。
 
-## Run
+## 运行
 
 ~~~powershell
 dotnet run --project .\src\PixelPin.App\PixelPin.App.csproj
 ~~~
 
-The app starts in the notification area. Use the tray menu, or press F1, to start a region capture.
+程序启动后常驻系统托盘。使用托盘菜单或按 F1 开始区域截图。
 
-Use the --settings, --diagnostics, --history, --windows, or --stickers launch argument to open a corresponding utility window directly.
-Add --no-hotkeys when troubleshooting a desktop where another application owns the configured global shortcut.
+可以使用 `--settings`、`--diagnostics`、`--history`、`--windows` 或 `--stickers` 直接打开对应工具窗口。排查快捷键冲突时，可以追加 `--no-hotkeys` 禁用全局快捷键。
 
-## Included workflow
+## 便携版
+
+便携版无需安装，解压后直接运行 `PixelPin.exe`。使用下面的脚本可以生成自包含的单文件程序和 ZIP 压缩包：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\Publish-Portable.ps1
+```
+
+输出目录为 `artifacts\PixelPin-win-x64-portable`，压缩包为 `artifacts\PixelPin-0.2.1-win-x64-portable.zip`。设置和历史记录保存在当前 Windows 用户的 `%LocalAppData%\PixelPin`，删除程序目录不会删除这些本地数据。
+
+## 功能
 
 - Per-monitor DPI-aware region overlays based on a physical-pixel desktop capture.
 - Copy, save as PNG or JPEG, open in the editor, or pin a selected capture.
@@ -21,13 +30,13 @@ Add --no-hotkeys when troubleshooting a desktop where another application owns t
 - Always-on-top sticker windows with resize, rotation, opacity, copy, save, close, reversible mouse-through support, groups, and manager controls.
 - Persistent hotkeys, save folder, default sticker opacity, startup registration, settings import/export, local capture history, tags, favorites, cache size limits, and thumbnail previews.
 - Local privacy and diagnostics page with a bounded rolling log; screenshots, clipboard data, and logs are never uploaded.
-- Explicit unavailable states for OCR, scrolling capture, or WebP when the host cannot supply a verified implementation.
+- OCR、滚动截图和 WebP 在当前构建不可用时会明确提示，不会伪造结果。
 
-## Verification
+## 验证
 
 ~~~powershell
 dotnet build PixelPin.sln -c Release
 dotnet run --project .\tests\PixelPin.Tests\PixelPin.Tests.csproj -c Release
 ~~~
 
-The automated checks cover settings normalization and portability, hotkey parsing, selection geometry, and filename generation. Multi-monitor mixed-DPI, sleep/resume, protected-content, HDR, and remote-desktop scenarios require a real Windows desktop test matrix and are documented in docs/verification.md.
+自动检查覆盖设置规范化与可移植性、快捷键解析、选区几何和文件名展开。多显示器混合 DPI、睡眠恢复、受保护内容、HDR 和远程桌面场景需要真实 Windows 桌面测试，详见 [docs/verification.md](docs/verification.md)。

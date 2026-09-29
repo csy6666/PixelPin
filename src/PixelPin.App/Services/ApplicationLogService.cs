@@ -24,7 +24,7 @@ public sealed class ApplicationLogService
         {
             if (!File.Exists(FilePath))
             {
-                return "No diagnostics have been recorded yet.";
+                return "暂时没有诊断记录。";
             }
 
             var content = File.ReadAllText(FilePath);
@@ -34,7 +34,7 @@ public sealed class ApplicationLogService
         }
         catch (Exception exception)
         {
-            return $"Diagnostic log could not be read: {exception.Message}";
+            return $"无法读取诊断日志：{exception.Message}";
         }
     }
 

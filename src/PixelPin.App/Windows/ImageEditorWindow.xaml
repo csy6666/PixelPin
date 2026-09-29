@@ -1,7 +1,7 @@
 <Window x:Class="PixelPin.Windows.ImageEditorWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="PixelPin Editor"
+        Title="PixelPin 标注编辑"
         Width="1120"
         Height="760"
         MinWidth="780"
@@ -11,33 +11,33 @@
   <DockPanel>
     <Border DockPanel.Dock="Top" Background="#F4F6F8" BorderBrush="#D7DCE2" BorderThickness="0,0,0,1" Padding="8">
       <WrapPanel VerticalAlignment="Center">
-        <Button Content="Rect" Tag="Rectangle" ToolTip="Rectangle annotation" Click="ToolButton_Click" />
-        <Button Content="Ellipse" Tag="Ellipse" ToolTip="Ellipse annotation" Click="ToolButton_Click" />
-        <Button Content="Line" Tag="Line" ToolTip="Line annotation" Click="ToolButton_Click" />
-        <Button Content="Arrow" Tag="Arrow" ToolTip="Arrow annotation" Click="ToolButton_Click" />
-        <Button Content="Pen" Tag="Pen" ToolTip="Freehand pen" Click="ToolButton_Click" />
-        <Button Content="Mosaic" Tag="Mosaic" ToolTip="Pixelate a region" Click="ToolButton_Click" />
-        <Button Content="Text" Tag="Text" ToolTip="Click to add text" Click="ToolButton_Click" />
+        <Button Content="矩形" Tag="Rectangle" ToolTip="矩形标注" Click="ToolButton_Click" />
+        <Button Content="椭圆" Tag="Ellipse" ToolTip="椭圆标注" Click="ToolButton_Click" />
+        <Button Content="直线" Tag="Line" ToolTip="直线标注" Click="ToolButton_Click" />
+        <Button Content="箭头" Tag="Arrow" ToolTip="箭头标注" Click="ToolButton_Click" />
+        <Button Content="画笔" Tag="Pen" ToolTip="自由绘制" Click="ToolButton_Click" />
+        <Button Content="马赛克" Tag="Mosaic" ToolTip="像素化一块区域" Click="ToolButton_Click" />
+        <Button Content="文字" Tag="Text" ToolTip="点击后添加文字" Click="ToolButton_Click" />
         <Separator Width="12" />
         <ComboBox x:Name="ColorPicker" Width="105" SelectedIndex="0" SelectionChanged="ColorPicker_SelectionChanged">
-          <ComboBoxItem Tag="#E53935" Content="Red" />
-          <ComboBoxItem Tag="#1677FF" Content="Blue" />
-          <ComboBoxItem Tag="#F59E0B" Content="Amber" />
-          <ComboBoxItem Tag="#111827" Content="Black" />
-          <ComboBoxItem Tag="#FFFFFF" Content="White" />
+          <ComboBoxItem Tag="#E53935" Content="红色" />
+          <ComboBoxItem Tag="#1677FF" Content="蓝色" />
+          <ComboBoxItem Tag="#F59E0B" Content="琥珀色" />
+          <ComboBoxItem Tag="#111827" Content="黑色" />
+          <ComboBoxItem Tag="#FFFFFF" Content="白色" />
         </ComboBox>
-        <TextBlock Margin="10,0,2,0" VerticalAlignment="Center" Text="Width" />
+        <TextBlock Margin="10,0,2,0" VerticalAlignment="Center" Text="线宽" />
         <Slider x:Name="StrokeWidthSlider" Width="90" Minimum="1" Maximum="14" Value="3" TickFrequency="1" IsSnapToTickEnabled="True" />
         <Separator Width="12" />
-        <Button Content="Undo" ToolTip="Undo (Ctrl+Z)" Click="Undo_Click" />
-        <Button Content="Redo" ToolTip="Redo (Ctrl+Y)" Click="Redo_Click" />
-        <Button Content="Clear" ToolTip="Clear annotations" Click="Clear_Click" />
+        <Button Content="撤销" ToolTip="撤销（Ctrl+Z）" Click="Undo_Click" />
+        <Button Content="重做" ToolTip="重做（Ctrl+Y）" Click="Redo_Click" />
+        <Button Content="清除" ToolTip="清除全部标注" Click="Clear_Click" />
         <Separator Width="12" />
-        <Button Content="Copy" ToolTip="Copy annotated image" Click="Copy_Click" />
-        <Button Content="Save PNG" ToolTip="Save annotated image" Click="Save_Click" />
-        <Button Content="Pin" ToolTip="Pin annotated image" Click="Pin_Click" />
-        <Button Content="OCR" ToolTip="Extract text when an OCR engine is available" Click="Ocr_Click" />
-        <Button Content="Done" ToolTip="Store annotated image in local history" Click="Done_Click" />
+        <Button Content="复制" ToolTip="复制带标注的图片" Click="Copy_Click" />
+        <Button Content="保存 PNG" ToolTip="保存带标注的图片" Click="Save_Click" />
+        <Button Content="贴图" ToolTip="贴出带标注的图片" Click="Pin_Click" />
+        <Button Content="OCR" ToolTip="在 OCR 引擎可用时提取文字" Click="Ocr_Click" />
+        <Button Content="完成" ToolTip="将带标注的图片保存到本地历史" Click="Done_Click" />
       </WrapPanel>
     </Border>
 

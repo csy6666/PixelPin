@@ -47,7 +47,7 @@ public partial class SettingsWindow : Window
         using var dialog = new System.Windows.Forms.FolderBrowserDialog
         {
             InitialDirectory = Directory.Exists(SaveDirectoryBox.Text) ? SaveDirectoryBox.Text : string.Empty,
-            Description = "Choose the folder for exported screenshots.",
+            Description = "选择导出截图的文件夹。",
             UseDescriptionForTitle = true,
         };
 
@@ -85,8 +85,8 @@ public partial class SettingsWindow : Window
     {
         var dialog = new OpenFileDialog
         {
-            Title = "Import PixelPin settings",
-            Filter = "PixelPin settings|*.json|All files|*.*",
+            Title = "导入 PixelPin 设置",
+            Filter = "PixelPin 设置|*.json|所有文件|*.*",
             Multiselect = false,
         };
         if (dialog.ShowDialog() != true)
@@ -98,12 +98,12 @@ public partial class SettingsWindow : Window
         {
             Populate(_import(dialog.FileName));
             StatusText.Foreground = System.Windows.Media.Brushes.ForestGreen;
-            StatusText.Text = "Settings loaded. Review them, then choose Save settings to apply.";
+            StatusText.Text = "设置已加载。请检查内容后点击“保存设置”应用。";
         }
         catch (Exception exception)
         {
             StatusText.Foreground = System.Windows.Media.Brushes.Firebrick;
-            StatusText.Text = $"Settings could not be imported: {exception.Message}";
+            StatusText.Text = $"无法导入设置：{exception.Message}";
         }
     }
 
@@ -117,8 +117,8 @@ public partial class SettingsWindow : Window
 
         var dialog = new SaveFileDialog
         {
-            Title = "Export PixelPin settings",
-            Filter = "JSON files|*.json|All files|*.*",
+            Title = "导出 PixelPin 设置",
+            Filter = "JSON 文件|*.json|所有文件|*.*",
             FileName = "pixelpin-settings.json",
             AddExtension = true,
             DefaultExt = ".json",
@@ -132,12 +132,12 @@ public partial class SettingsWindow : Window
         {
             _export(settings, dialog.FileName);
             StatusText.Foreground = System.Windows.Media.Brushes.ForestGreen;
-            StatusText.Text = $"Settings exported to {Path.GetFileName(dialog.FileName)}.";
+            StatusText.Text = $"设置已导出到 {Path.GetFileName(dialog.FileName)}。";
         }
         catch (Exception exception)
         {
             StatusText.Foreground = System.Windows.Media.Brushes.Firebrick;
-            StatusText.Text = $"Settings could not be exported: {exception.Message}";
+            StatusText.Text = $"无法导出设置：{exception.Message}";
         }
     }
 
@@ -151,7 +151,7 @@ public partial class SettingsWindow : Window
         if (!int.TryParse(HistoryLimitBox.Text, out var historyLimit)
             || !int.TryParse(HistoryDiskLimitBox.Text, out var historyDiskLimit))
         {
-            StatusText.Text = "History entries and cache limit must be whole numbers.";
+            StatusText.Text = "历史记录数量和缓存上限必须是整数。";
             return null;
         }
 

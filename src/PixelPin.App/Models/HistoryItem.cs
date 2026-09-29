@@ -16,5 +16,5 @@ public sealed class HistoryItem
 
     public string Tags { get; set; } = string.Empty;
 
-    public string DisplayName => $"{(IsFavorite ? "* " : string.Empty)}{CreatedAt.LocalDateTime:g} - {PixelWidth} x {PixelHeight}";
+    public string DisplayName => $"{(IsFavorite ? "★ " : string.Empty)}{CreatedAt.LocalDateTime:g} - {PixelWidth} x {PixelHeight}";
 }

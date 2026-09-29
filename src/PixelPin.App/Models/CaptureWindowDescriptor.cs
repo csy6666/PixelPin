@@ -8,5 +8,5 @@ public sealed record CaptureWindowDescriptor(
     string ProcessName,
     Rectangle Bounds)
 {
-    public string DisplayName => $"{Title} ({ProcessName}) - {Bounds.Width} x {Bounds.Height}";
+    public string DisplayName => $"{Title}（{ProcessName}）- {Bounds.Width} x {Bounds.Height}";
 }

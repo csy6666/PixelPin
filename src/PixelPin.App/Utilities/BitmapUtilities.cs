@@ -32,7 +32,7 @@ public static class BitmapUtilities
     {
         if (pixels.Width < 1 || pixels.Height < 1)
         {
-            throw new ArgumentOutOfRangeException(nameof(pixels), "The selected capture area is empty.");
+            throw new ArgumentOutOfRangeException(nameof(pixels), "所选截图区域为空。");
         }
 
         var crop = new CroppedBitmap(source, pixels);

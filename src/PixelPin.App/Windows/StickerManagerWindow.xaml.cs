@@ -75,11 +75,11 @@ public partial class StickerManagerWindow : Window
     private void CloseGroup_Click(object sender, RoutedEventArgs e)
     {
         var group = string.IsNullOrWhiteSpace(GroupNameBox.Text)
-            ? SelectedSticker?.GroupName ?? "Ungrouped"
+            ? SelectedSticker?.GroupName ?? "未分组"
             : GroupNameBox.Text.Trim();
         if (MessageBox.Show(
-                $"Close all stickers in '{group}'?",
-                "Close sticker group",
+                $"确定要关闭“{group}”分组中的所有贴图吗？",
+                "关闭贴图分组",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning) != MessageBoxResult.Yes)
         {
@@ -142,8 +142,8 @@ public partial class StickerManagerWindow : Window
         }
 
         if (MessageBox.Show(
-                "Close every active sticker?",
-                "Close all stickers",
+                "确定要关闭所有当前贴图吗？",
+                "关闭所有贴图",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning) == MessageBoxResult.Yes)
         {

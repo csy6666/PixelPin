@@ -44,7 +44,7 @@ public partial class ImageEditorWindow : Window
         EditorSurface.Height = image.PixelHeight;
         DrawingCanvas.Width = image.PixelWidth;
         DrawingCanvas.Height = image.PixelHeight;
-        StatusText.Text = "Choose an annotation tool and drag over the image. Ctrl+Z and Ctrl+Y undo and redo.";
+        StatusText.Text = "选择标注工具后在图片上拖动。Ctrl+Z 撤销，Ctrl+Y 重做。";
     }
 
     private void ToolButton_Click(object sender, RoutedEventArgs e)
@@ -53,7 +53,17 @@ public partial class ImageEditorWindow : Window
         {
             FinishTextDraft();
             _tool = tool;
-            StatusText.Text = $"{name} tool selected.";
+            StatusText.Text = $"已选择{name switch
+            {
+                "Rectangle" => "矩形",
+                "Ellipse" => "椭圆",
+                "Line" => "直线",
+                "Arrow" => "箭头",
+                "Pen" => "画笔",
+                "Mosaic" => "马赛克",
+                "Text" => "文字",
+                _ => name,
+            }}工具。";
         }
     }
 
@@ -149,7 +159,7 @@ public partial class ImageEditorWindow : Window
     private void Ocr_Click(object sender, RoutedEventArgs e)
     {
         MessageBox.Show(
-            "OCR is intentionally unavailable until a Windows OCR language component is configured. The editor has not produced a guessed or partial result.",
+            "OCR 功能需要配置 Windows OCR 语言组件后才能启用。当前编辑器不会生成猜测或不完整的识别结果。",
             "PixelPin OCR",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
@@ -411,7 +421,17 @@ public partial class ImageEditorWindow : Window
         command.Do(DrawingCanvas);
         _undo.Add(command);
         _redo.Clear();
-        StatusText.Text = $"{_tool} annotation added.";
+        StatusText.Text = $"已添加{_tool switch
+        {
+            EditorTool.Rectangle => "矩形",
+            EditorTool.Ellipse => "椭圆",
+            EditorTool.Line => "直线",
+            EditorTool.Arrow => "箭头",
+            EditorTool.Pen => "画笔",
+            EditorTool.Mosaic => "马赛克",
+            EditorTool.Text => "文字",
+            _ => "标注",
+        }}。";
     }
 
     private void Undo()
@@ -426,7 +446,7 @@ public partial class ImageEditorWindow : Window
         _undo.RemoveAt(_undo.Count - 1);
         command.Undo(DrawingCanvas);
         _redo.Add(command);
-        StatusText.Text = "Undid last annotation.";
+        StatusText.Text = "已撤销上一次标注。";
     }
 
     private void Redo()
@@ -440,7 +460,7 @@ public partial class ImageEditorWindow : Window
         _redo.RemoveAt(_redo.Count - 1);
         command.Do(DrawingCanvas);
         _undo.Add(command);
-        StatusText.Text = "Redid annotation.";
+        StatusText.Text = "已重做标注。";
     }
 
     private static Geometry BuildLineGeometry(Point start, Point end, bool arrow)

@@ -111,8 +111,8 @@ public partial class HistoryWindow : Window
     private void Clear_Click(object sender, RoutedEventArgs e)
     {
         if (MessageBox.Show(
-                "Delete all locally cached screenshots from PixelPin history?",
-                "Clear history",
+                "确定要删除 PixelPin 历史记录中缓存的全部截图吗？",
+                "清空历史记录",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning) != MessageBoxResult.Yes)
         {
