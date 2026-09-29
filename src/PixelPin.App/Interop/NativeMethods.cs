@@ -6,6 +6,20 @@ namespace PixelPin.Interop;
 internal static class NativeMethods
 {
     public const int WmHotKey = 0x0312;
+    public const int WmKeyDown = 0x0100;
+    public const int WmKeyUp = 0x0101;
+    public const int WmSysKeyDown = 0x0104;
+    public const int WmSysKeyUp = 0x0105;
+    public const int WhKeyboardLl = 13;
+
+    public const int VkLControl = 0xA2;
+    public const int VkRControl = 0xA3;
+    public const int VkLMenu = 0xA4;
+    public const int VkRMenu = 0xA5;
+    public const int VkLShift = 0xA0;
+    public const int VkRShift = 0xA1;
+    public const int VkLWin = 0x5B;
+    public const int VkRWin = 0x5C;
     public const uint ModAlt = 0x0001;
     public const uint ModControl = 0x0002;
     public const uint ModShift = 0x0004;
@@ -26,6 +40,35 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool UnregisterHotKey(nint hWnd, int id);
+
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    public delegate nint LowLevelKeyboardProc(int nCode, nint wParam, nint lParam);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct KeyboardHookData
+    {
+        public uint VkCode;
+        public uint ScanCode;
+        public uint Flags;
+        public uint Time;
+        public nint DwExtraInfo;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern nint SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, nint hMod, uint dwThreadId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool UnhookWindowsHookEx(nint hhk);
+
+    [DllImport("user32.dll")]
+    public static extern nint CallNextHookEx(nint hhk, int nCode, nint wParam, nint lParam);
+
+    [DllImport("user32.dll")]
+    public static extern short GetAsyncKeyState(int vKey);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    public static extern nint GetModuleHandle(string? lpModuleName);
 
     [DllImport("user32.dll")]
     public static extern nint GetForegroundWindow();

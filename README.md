@@ -8,7 +8,7 @@ PixelPin 是一款使用 .NET 8 和 WPF 独立实现的 Windows 原生截图与�
 dotnet run --project .\src\PixelPin.App\PixelPin.App.csproj
 ~~~
 
-程序启动后常驻系统托盘。使用托盘菜单或按 F1 开始区域截图。
+程序启动后常驻系统托盘。使用托盘菜单或按 F1 开始区域截图。快捷键同时使用 Windows 全局热键和按键兼容通道，部分会吞掉普通键盘消息的应用也可以触发截图；兼容通道只匹配已配置的按键，不记录或上传键盘内容。
 
 可以使用 `--settings`、`--diagnostics`、`--history`、`--windows` 或 `--stickers` 直接打开对应工具窗口。排查快捷键冲突时，可以追加 `--no-hotkeys` 禁用全局快捷键。
 
