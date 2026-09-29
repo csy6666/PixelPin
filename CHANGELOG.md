@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.3
+
+- 改进全局快捷键兼容性：在目标应用吞掉普通快捷键消息时，使用低级键盘钩子作为兜底。
+- 对兼容通道增加重复触发抑制、按键释放清理和 PixelPin 内部快捷键冲突检查。
+
 ## 0.2.2
 
 - Added the original PixelPin application icon to the executable, windows, system tray, and portable package.
