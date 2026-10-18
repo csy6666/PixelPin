@@ -224,7 +224,8 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        DialogResult = true;
+        // Settings is opened modelessly by AppController.ShowSettings(), so it has no
+        // dialog result to set. Assigning DialogResult here would throw at runtime.
         Close();
     }
 
