@@ -1,0 +1,12 @@
+# The repository stores LF. Without this, core.autocrlf rewrites the working tree
+# to CRLF on the next checkout and every file shows up as a whole-file diff; the
+# .gitignore and one XAML file had already drifted before this was pinned.
+* text=auto eol=lf
+
+# Binary assets must never be normalised.
+*.ico binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.zip binary
