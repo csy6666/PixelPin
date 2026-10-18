@@ -7,7 +7,10 @@ Run:
 ~~~powershell
 dotnet build PixelPin.sln -c Release
 dotnet run --project .\tests\PixelPin.Tests\PixelPin.Tests.csproj -c Release
+dotnet run --project .\tests\PixelPin.UiRender -c Debug
 ~~~
+
+`.github/workflows/ci.yml` runs the same three on every push and pull request, with the build treating warnings as errors. The render harness prints a `skipped` line and exits 0 when the runner cannot create a window, so a green run means the checks really executed; the desktop probe is not part of CI because it moves the real cursor and captures the real screen.
 
 The console checks validate shortcut parsing and duplicate detection, persisted-setting normalization and portability, legacy settings migration, selection geometry, window-edge snapping, keyboard nudging and its step sizes, z-order hit testing, sticker resize geometry, sticker alignment and guide generation, sticker clamping, pixelation, box blur, beautify layout and shadow fitting, beautify preset serialization, OCR text assembly and script detection, OCR unavailable reasons, window-render quality classification, occlusion measurement, window-capture route ordering, scroll offset measurement and its refusals, detached crops, and output filename expansion.
 

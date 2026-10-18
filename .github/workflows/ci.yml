@@ -1,10 +1,11 @@
 name: CI
 
-# Builds the solution and runs the desktop-free checks on every push and pull
-# request. The offscreen render harness (tests/PixelPin.UiRender) is deliberately
-# not part of this workflow: it creates real windows, asks DWM about the title bar,
-# and measures the tray area, none of which a headless runner can answer. It stays a
-# local gate, documented in docs/verification.md.
+# Builds the solution and runs every check that does not need a human at the
+# keyboard: the desktop-free unit checks and the offscreen render harness. The
+# render harness creates real windows and asks DWM about the title bar, so it
+# skips itself with a stated reason on a runner that cannot host a window rather
+# than reporting a failure the machine caused. The desktop probe is not run here:
+# it moves the real cursor and captures the real screen.
 
 on:
   push:
