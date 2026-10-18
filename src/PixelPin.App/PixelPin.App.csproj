@@ -1,7 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- 22621 is the lowest projection that exposes GraphicsCaptureSession.IsBorderRequired,
+         which lets the capture border be suppressed. SupportedOSPlatformVersion keeps the
+         actual runtime requirement at Windows 10 2004, and every newer call is guarded. -->
+    <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -11,9 +15,28 @@
     <LangVersion>latest</LangVersion>
     <AssemblyName>PixelPin</AssemblyName>
     <RootNamespace>PixelPin</RootNamespace>
-    <Version>0.2.3</Version>
-    <AssemblyVersion>0.2.3.0</AssemblyVersion>
-    <FileVersion>0.2.3.0</FileVersion>
-    <InformationalVersion>0.2.3</InformationalVersion>
+    <Version>0.8.0</Version>
+    <AssemblyVersion>0.8.0.0</AssemblyVersion>
+    <FileVersion>0.8.0.0</FileVersion>
+    <InformationalVersion>0.8.0</InformationalVersion>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Windows.Graphics.Capture needs a Direct3D 11 device and a staging texture the CPU
+         can read. Vortice is a thin, source-available binding over the D3D11 COM vtables;
+         hand-rolling those vtables would put an access violation behind every typo, which
+         is not a failure mode a screenshot tool can afford. -->
+    <PackageReference Include="Vortice.Direct3D11" Version="3.6.2" />
+    <PackageReference Include="Vortice.DXGI" Version="3.6.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The WPF SDK only globs .xaml automatically, so the window icon referenced by
+         App.xaml has to be declared explicitly. Without this the pack URI in App.xaml
+         cannot resolve and the implicit Window style fails to seal. -->
+    <Resource Include="Assets\PixelPin.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The console test project drives window input handlers directly so the
+         annotation and sticker behaviour can be verified on a real desktop. -->
+    <InternalsVisibleTo Include="PixelPin.Tests" />
+  </ItemGroup>
 </Project>

@@ -80,6 +80,7 @@ public sealed class HistoryService
 
         var image = new BitmapImage();
         image.BeginInit();
+        image.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
         image.UriSource = new Uri(item.FilePath, UriKind.Absolute);
         image.CacheOption = BitmapCacheOption.OnLoad;
         image.EndInit();
@@ -107,6 +108,7 @@ public sealed class HistoryService
 
         var image = new BitmapImage();
         image.BeginInit();
+        image.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
         image.UriSource = new Uri(item.FilePath, UriKind.Absolute);
         image.CacheOption = BitmapCacheOption.OnLoad;
         image.DecodePixelWidth = Math.Max(64, decodePixelWidth);

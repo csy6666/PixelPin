@@ -10,48 +10,266 @@
         Topmost="True"
         PreviewKeyDown="Window_PreviewKeyDown"
         Deactivated="Window_Deactivated">
+  <Window.Resources>
+    <!--
+      The capture bar floats over a live screenshot, so it is its own dark surface
+      rather than a themed light one: a light bar over a bright page is unreadable,
+      and a light bar over a dark page loses its edge. The tokens for this surface
+      are local because no other window draws on top of arbitrary content.
+    -->
+    <SolidColorBrush x:Key="BarSurfaceBrush" Color="#F01C1C1C" />
+    <SolidColorBrush x:Key="BarHoverBrush" Color="#22FFFFFF" />
+    <SolidColorBrush x:Key="BarPressedBrush" Color="#38FFFFFF" />
+    <SolidColorBrush x:Key="BarBorderBrush" Color="#33FFFFFF" />
+    <SolidColorBrush x:Key="BarTextBrush" Color="#F2FFFFFF" />
+    <SolidColorBrush x:Key="BarMutedBrush" Color="#B3FFFFFF" />
+
+    <Style x:Key="BarButton" TargetType="Button">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="{StaticResource BarTextBrush}" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Padding" Value="9,0" />
+      <Setter Property="MinHeight" Value="30" />
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Grid SnapsToDevicePixels="True">
+              <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                      CornerRadius="7" />
+              <Border x:Name="Overlay" Background="#FFFFFF" Opacity="0" CornerRadius="7"
+                      IsHitTestVisible="False" />
+              <ContentPresenter Margin="{TemplateBinding Padding}"
+                                HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Overlay" Property="Opacity" Value="0.12" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Overlay" Property="Opacity" Value="0.22" />
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentHoverBrush}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Bd" Property="Opacity" Value="0.4" />
+                <Setter Property="Foreground" Value="{StaticResource BarMutedBrush}" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- The primary action carries the accent fill; everything else stays glassy. -->
+    <Style x:Key="BarAccentButton" TargetType="Button" BasedOn="{StaticResource BarButton}">
+      <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style x:Key="BarGlyph" TargetType="Path">
+      <Setter Property="Width" Value="14" />
+      <Setter Property="Height" Value="14" />
+      <Setter Property="Stretch" Value="Uniform" />
+      <Setter Property="StrokeThickness" Value="1.4" />
+      <Setter Property="StrokeLineJoin" Value="Round" />
+      <Setter Property="StrokeStartLineCap" Value="Round" />
+      <Setter Property="StrokeEndLineCap" Value="Round" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Stroke" Value="{StaticResource BarTextBrush}" />
+    </Style>
+
+    <Style x:Key="BarLabel" TargetType="TextBlock">
+      <Setter Property="Margin" Value="6,0,0,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="BarRule" TargetType="Border">
+      <Setter Property="Width" Value="1" />
+      <Setter Property="Height" Value="18" />
+      <Setter Property="Margin" Value="5,0" />
+      <Setter Property="Background" Value="{StaticResource BarBorderBrush}" />
+    </Style>
+
+    <!-- Selection handles: an 8px white square with an accent edge reads as a grip
+         without covering the corner it is attached to. -->
+    <Style x:Key="HandleStyle" TargetType="Thumb">
+      <Setter Property="Width" Value="10" />
+      <Setter Property="Height" Value="10" />
+      <Setter Property="Cursor" Value="SizeNWSE" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Thumb">
+            <Border x:Name="Grip" Width="8" Height="8" CornerRadius="2"
+                    Background="#FFFFFF" BorderBrush="#1D7BFF" BorderThickness="1.5"
+                    HorizontalAlignment="Center" VerticalAlignment="Center" />
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Grip" Property="Width" Value="10" />
+                <Setter TargetName="Grip" Property="Height" Value="10" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
+
   <Canvas x:Name="Surface"
           Background="Transparent"
           MouseLeftButtonDown="Surface_MouseLeftButtonDown"
-          MouseMove="Surface_MouseMove"
           MouseLeftButtonUp="Surface_MouseLeftButtonUp"
+          MouseMove="Surface_MouseMove"
+          MouseRightButtonDown="Surface_MouseRightButtonDown"
           SizeChanged="Surface_SizeChanged">
     <Image x:Name="ScreenshotImage" Stretch="Fill" IsHitTestVisible="False" />
+    <!-- The dimmer is behaviour, not decoration: the desktop probe asserts the
+         #A6000000 composite ratio, so this fill must not change. -->
     <Path x:Name="Dimmer" Fill="#A6000000" IsHitTestVisible="False" />
-    <Rectangle x:Name="SelectionBorder" Stroke="#1D7BFF" StrokeThickness="2" Visibility="Collapsed" IsHitTestVisible="False" />
 
-    <Thumb x:Name="TopLeftHandle" Tag="Top,Left" Width="10" Height="10" Background="White" BorderBrush="#1D7BFF" BorderThickness="1"
-           Cursor="SizeNWSE" Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
-    <Thumb x:Name="TopHandle" Tag="Top" Width="10" Height="10" Background="White" BorderBrush="#1D7BFF" BorderThickness="1"
-           Cursor="SizeNS" Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
-    <Thumb x:Name="TopRightHandle" Tag="Top,Right" Width="10" Height="10" Background="White" BorderBrush="#1D7BFF" BorderThickness="1"
-           Cursor="SizeNESW" Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
-    <Thumb x:Name="RightHandle" Tag="Right" Width="10" Height="10" Background="White" BorderBrush="#1D7BFF" BorderThickness="1"
-           Cursor="SizeWE" Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
-    <Thumb x:Name="BottomRightHandle" Tag="Bottom,Right" Width="10" Height="10" Background="White" BorderBrush="#1D7BFF" BorderThickness="1"
-           Cursor="SizeNWSE" Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
-    <Thumb x:Name="BottomHandle" Tag="Bottom" Width="10" Height="10" Background="White" BorderBrush="#1D7BFF" BorderThickness="1"
-           Cursor="SizeNS" Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
-    <Thumb x:Name="BottomLeftHandle" Tag="Bottom,Left" Width="10" Height="10" Background="White" BorderBrush="#1D7BFF" BorderThickness="1"
-           Cursor="SizeNESW" Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
-    <Thumb x:Name="LeftHandle" Tag="Left" Width="10" Height="10" Background="White" BorderBrush="#1D7BFF" BorderThickness="1"
-           Cursor="SizeWE" Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
-
-    <Border x:Name="ReadoutPanel" Background="#E9212935" CornerRadius="4" Padding="8,5" IsHitTestVisible="False">
-      <TextBlock x:Name="ReadoutText" Foreground="White" FontFamily="Consolas" FontSize="12" />
+    <Rectangle x:Name="WindowHighlight" Stroke="#FFC53D" StrokeThickness="2" Fill="#2EFFC53D"
+               Visibility="Collapsed" IsHitTestVisible="False" />
+    <Border x:Name="WindowLabel" Background="#E9FFC53D" CornerRadius="4" Padding="8,3"
+            Visibility="Collapsed" IsHitTestVisible="False">
+      <TextBlock x:Name="WindowLabelText" Foreground="#1F2933" FontSize="12" MaxWidth="460" TextTrimming="CharacterEllipsis" />
     </Border>
 
-    <Border x:Name="MagnifierPanel" Width="128" Height="128" Background="#F9232935" BorderBrush="White" BorderThickness="1" IsHitTestVisible="False">
+    <Rectangle x:Name="SelectionBorder" Stroke="#1D7BFF" StrokeThickness="2" Visibility="Collapsed" IsHitTestVisible="False" />
+
+    <Thumb x:Name="TopLeftHandle" Tag="Top,Left" Style="{StaticResource HandleStyle}" Cursor="SizeNWSE"
+           Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
+    <Thumb x:Name="TopHandle" Tag="Top" Style="{StaticResource HandleStyle}" Cursor="SizeNS"
+           Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
+    <Thumb x:Name="TopRightHandle" Tag="Top,Right" Style="{StaticResource HandleStyle}" Cursor="SizeNESW"
+           Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
+    <Thumb x:Name="RightHandle" Tag="Right" Style="{StaticResource HandleStyle}" Cursor="SizeWE"
+           Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
+    <Thumb x:Name="BottomRightHandle" Tag="Bottom,Right" Style="{StaticResource HandleStyle}" Cursor="SizeNWSE"
+           Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
+    <Thumb x:Name="BottomHandle" Tag="Bottom" Style="{StaticResource HandleStyle}" Cursor="SizeNS"
+           Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
+    <Thumb x:Name="BottomLeftHandle" Tag="Bottom,Left" Style="{StaticResource HandleStyle}" Cursor="SizeNESW"
+           Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
+    <Thumb x:Name="LeftHandle" Tag="Left" Style="{StaticResource HandleStyle}" Cursor="SizeWE"
+           Visibility="Collapsed" DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
+
+    <!-- Size pill above the selection. The dimensions are the one number the user
+         checks before committing, so they get the accent fill. -->
+    <Border x:Name="SizeBadge" Background="#F01D7BFF" CornerRadius="6" Padding="9,4"
+            Visibility="Collapsed" IsHitTestVisible="False">
+      <TextBlock x:Name="SizeBadgeText" Foreground="White" FontFamily="{DynamicResource MonoFontFamily}"
+                 FontSize="12" />
+    </Border>
+
+    <Border x:Name="ReadoutPanel" Background="{StaticResource BarSurfaceBrush}" CornerRadius="6" Padding="9,5"
+            BorderBrush="{StaticResource BarBorderBrush}" BorderThickness="1" IsHitTestVisible="False">
+      <TextBlock x:Name="ReadoutText" Foreground="{StaticResource BarTextBrush}"
+                 FontFamily="{DynamicResource MonoFontFamily}" FontSize="12" />
+    </Border>
+
+    <Border x:Name="MagnifierPanel" Width="128" Height="128" Background="#FA1C1C1C"
+            BorderBrush="#1D7BFF" BorderThickness="2" IsHitTestVisible="False">
+      <Border.Clip>
+        <RectangleGeometry Rect="0,0,128,128" RadiusX="10" RadiusY="10" />
+      </Border.Clip>
       <Image x:Name="MagnifierImage" Stretch="Fill" RenderOptions.BitmapScalingMode="NearestNeighbor" />
     </Border>
 
-    <Border x:Name="Toolbar" Background="#FDFDFD" BorderBrush="#CFD6DF" BorderThickness="1" CornerRadius="4" Padding="4" Visibility="Collapsed">
+    <Border x:Name="HintPanel" Background="{StaticResource BarSurfaceBrush}" CornerRadius="8" Padding="13,8"
+            BorderBrush="{StaticResource BarBorderBrush}" BorderThickness="1" IsHitTestVisible="False">
+      <TextBlock x:Name="HintText" Foreground="{StaticResource BarTextBrush}" FontSize="12"
+                 Text="拖动鼠标选择区域；单击高亮窗口直接截取该窗口；方向键微调，Shift+方向键改尺寸，Ctrl 加速；右键或 Esc 取消。" />
+    </Border>
+
+    <!-- Capture bar. Buttons are icon plus label: an icon alone would hide the
+         long-screenshot and scroll actions, which are the ones users look for. -->
+    <Border x:Name="Toolbar" Background="{StaticResource BarSurfaceBrush}"
+            BorderBrush="{StaticResource BarBorderBrush}" BorderThickness="1"
+            CornerRadius="10" Padding="5" Visibility="Collapsed">
+      <Border.RenderTransform>
+        <TranslateTransform />
+      </Border.RenderTransform>
+      <Border.Style>
+        <Style TargetType="Border">
+          <Style.Triggers>
+            <!-- The bar appears the instant a selection is released, right under the
+                 cursor. A 120ms fade with a 6px rise makes it read as "arrived"
+                 rather than flickering into place. -->
+            <Trigger Property="Visibility" Value="Visible">
+              <Trigger.EnterActions>
+                <BeginStoryboard>
+                  <Storyboard>
+                    <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                     From="0" To="1" Duration="0:0:0.12" />
+                    <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                     From="6" To="0" Duration="0:0:0.12">
+                      <DoubleAnimation.EasingFunction>
+                        <CubicEase EasingMode="EaseOut" />
+                      </DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                  </Storyboard>
+                </BeginStoryboard>
+              </Trigger.EnterActions>
+            </Trigger>
+          </Style.Triggers>
+        </Style>
+      </Border.Style>
+      <Border.Effect>
+        <DropShadowEffect BlurRadius="18" ShadowDepth="3" Direction="270" Opacity="0.35" Color="#000000" />
+      </Border.Effect>
       <StackPanel Orientation="Horizontal">
-        <Button Content="复制" ToolTip="复制选区（Ctrl+C）" Click="Copy_Click" />
-        <Button Content="保存" ToolTip="保存为 PNG（Ctrl+S）" Click="Save_Click" />
-        <Button Content="贴图" ToolTip="贴到桌面（P）" Click="Pin_Click" />
-        <Button Content="编辑" ToolTip="打开标注编辑器" Click="Edit_Click" />
-        <Button Content="取消" ToolTip="取消截图（Esc）" Click="Cancel_Click" />
+        <Button Style="{StaticResource BarButton}" Click="Copy_Click" ToolTip="复制选区（Ctrl+C 或 Enter）">
+          <StackPanel Orientation="Horizontal">
+            <Path Style="{StaticResource BarGlyph}" Data="{StaticResource IconCopy}" />
+            <TextBlock Style="{StaticResource BarLabel}" Text="复制" />
+          </StackPanel>
+        </Button>
+        <Button Style="{StaticResource BarButton}" Click="Save_Click" ToolTip="保存为 PNG（Ctrl+S）">
+          <StackPanel Orientation="Horizontal">
+            <Path Style="{StaticResource BarGlyph}" Data="{StaticResource IconSave}" />
+            <TextBlock Style="{StaticResource BarLabel}" Text="保存" />
+          </StackPanel>
+        </Button>
+        <Button Style="{StaticResource BarButton}" Click="Pin_Click" ToolTip="贴到桌面（P）">
+          <StackPanel Orientation="Horizontal">
+            <Path Style="{StaticResource BarGlyph}" Data="{StaticResource IconPin}" />
+            <TextBlock Style="{StaticResource BarLabel}" Text="贴图" />
+          </StackPanel>
+        </Button>
+        <Button Style="{StaticResource BarAccentButton}" Click="Edit_Click" ToolTip="打开标注编辑器（E）">
+          <StackPanel Orientation="Horizontal">
+            <Path Style="{StaticResource BarGlyph}" Data="{StaticResource IconPen}" Stroke="White" />
+            <TextBlock Style="{StaticResource BarLabel}" Text="编辑" />
+          </StackPanel>
+        </Button>
+        <Border Style="{StaticResource BarRule}" />
+        <Button Style="{StaticResource BarButton}" Click="Scroll_Click"
+                ToolTip="滚动截图：向下滚动并拼接成一张长图（L）">
+          <StackPanel Orientation="Horizontal">
+            <Path Style="{StaticResource BarGlyph}" Data="{StaticResource IconScroll}" />
+            <TextBlock Style="{StaticResource BarLabel}" Text="长截图" />
+          </StackPanel>
+        </Button>
+        <Button Style="{StaticResource BarButton}" Click="SelectAll_Click" ToolTip="选择整块显示器（A）">
+          <StackPanel Orientation="Horizontal">
+            <Path Style="{StaticResource BarGlyph}" Data="{StaticResource IconScreen}" />
+            <TextBlock Style="{StaticResource BarLabel}" Text="全屏" />
+          </StackPanel>
+        </Button>
+        <Border Style="{StaticResource BarRule}" />
+        <Button Style="{StaticResource BarButton}" Click="Cancel_Click" ToolTip="取消截图（Esc）">
+          <StackPanel Orientation="Horizontal">
+            <Path Style="{StaticResource BarGlyph}" Data="{StaticResource IconClose}" Width="12" Height="12" />
+            <TextBlock Style="{StaticResource BarLabel}" Text="取消" />
+          </StackPanel>
+        </Button>
       </StackPanel>
     </Border>
   </Canvas>

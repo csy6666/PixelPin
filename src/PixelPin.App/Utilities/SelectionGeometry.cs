@@ -20,6 +20,13 @@ public static class SelectionGeometry
         return new Rect(left, top, width, height);
     }
 
+    /// <summary>
+    /// Moves a rectangle without changing its size, keeping it inside the boundary.
+    /// Used by the keyboard nudge, which must never resize the selection.
+    /// </summary>
+    public static Rect Nudge(Rect value, Vector delta, Size boundary)
+        => Clamp(new Rect(new Point(value.Left + delta.X, value.Top + delta.Y), value.Size), boundary, 1);
+
     public static Rect Resize(Rect initial, ResizeEdge edge, Vector delta, Size boundary, double minimumSize = 12)
     {
         var left = initial.Left;

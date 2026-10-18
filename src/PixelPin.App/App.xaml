@@ -3,16 +3,31 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              ShutdownMode="OnExplicitShutdown">
   <Application.Resources>
-    <BitmapImage x:Key="PixelPinIcon" UriSource="pack://application:,,,/Assets/PixelPin.png" />
-    <SolidColorBrush x:Key="AccentBrush" Color="#1677FF" />
-    <SolidColorBrush x:Key="PanelBrush" Color="#F7F9FC" />
-    <Style TargetType="Button">
-      <Setter Property="Padding" Value="10,6" />
-      <Setter Property="Margin" Value="4" />
-      <Setter Property="MinHeight" Value="30" />
-    </Style>
-    <Style TargetType="Window">
-      <Setter Property="Icon" Value="{StaticResource PixelPinIcon}" />
-    </Style>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <!-- Order matters: tokens first, then the controls that consume them.
+             Swapping Tokens.Light.xaml for a dark dictionary is all a future
+             theme switch needs. -->
+        <ResourceDictionary Source="Themes/Tokens.Light.xaml" />
+        <ResourceDictionary Source="Themes/Controls.xaml" />
+      </ResourceDictionary.MergedDictionaries>
+
+      <!-- Qualified with the assembly name so the icon resolves from any entry assembly,
+           including the desktop probe that hosts these resources for testing. -->
+      <BitmapImage x:Key="PixelPinIcon" UriSource="pack://application:,,,/PixelPin;component/Assets/PixelPin.png" />
+
+      <!-- Application-wide typography. Foreground and font inherit down the visual
+           tree, so every window picks up the same text colour without a per-window
+           TextBlock style (which would also restyle text drawn on the canvas). -->
+      <Style TargetType="Window">
+        <Setter Property="Icon" Value="{StaticResource PixelPinIcon}" />
+        <Setter Property="Background" Value="{DynamicResource AppBackgroundBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="FontFamily" Value="{DynamicResource UiFontFamily}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="UseLayoutRounding" Value="True" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+      </Style>
+    </ResourceDictionary>
   </Application.Resources>
 </Application>

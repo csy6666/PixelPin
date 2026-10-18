@@ -44,6 +44,7 @@ public partial class HistoryWindow : Window
                 || item.Tags.Contains(query, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(item => item.IsFavorite)
             .ThenByDescending(item => item.CreatedAt)
+            .Select(WithThumbnail)
             .ToList();
         if (HistoryList.Items.Count > 0)
         {
@@ -64,6 +65,28 @@ public partial class HistoryWindow : Window
     }
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => ApplyFilter();
+
+    /// <summary>
+    /// Attaches the decoded preview to the item before it reaches the list. The
+    /// service owns decoding, so the window never has to guess a decode size.
+    /// </summary>
+    private HistoryItem WithThumbnail(HistoryItem item)
+    {
+        if (item.Thumbnail is null)
+        {
+            try
+            {
+                item.Thumbnail = _history.LoadThumbnail(item, 128);
+            }
+            catch (Exception)
+            {
+                // A cache file that vanished between the index read and the decode
+                // simply shows the placeholder instead of failing the whole list.
+            }
+        }
+
+        return item;
+    }
 
     private void Copy_Click(object sender, RoutedEventArgs e) => WithSelection(_copy);
 

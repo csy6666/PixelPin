@@ -11,15 +11,101 @@
         PreviewKeyDown="Window_PreviewKeyDown"
         MouseWheel="Window_MouseWheel"
         AllowDrop="True">
+  <Window.Resources>
+    <!--
+      The sticker toolbar floats over the pinned image, which can be any colour, so
+      it carries its own dark surface. These brushes are local for the same reason
+      as the capture bar's: nothing else draws over arbitrary content.
+    -->
+    <SolidColorBrush x:Key="StickerBarBrush" Color="#F01C1C1C" />
+    <SolidColorBrush x:Key="StickerBarBorderBrush" Color="#33FFFFFF" />
+    <SolidColorBrush x:Key="StickerBarTextBrush" Color="#F2FFFFFF" />
+    <SolidColorBrush x:Key="StickerBarMutedBrush" Color="#A6FFFFFF" />
+
+    <Style x:Key="StickerButton" TargetType="Button">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="{StaticResource StickerBarTextBrush}" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Width" Value="28" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="Margin" Value="1,0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Grid SnapsToDevicePixels="True">
+              <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                      CornerRadius="6" />
+              <Border x:Name="Overlay" Background="#FFFFFF" Opacity="0" CornerRadius="6"
+                      IsHitTestVisible="False" />
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Overlay" Property="Opacity" Value="0.14" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Overlay" Property="Opacity" Value="0.26" />
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentHoverBrush}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{StaticResource StickerBarMutedBrush}" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="StickerGlyph" TargetType="Path">
+      <Setter Property="Width" Value="14" />
+      <Setter Property="Height" Value="14" />
+      <Setter Property="Stretch" Value="Uniform" />
+      <Setter Property="StrokeThickness" Value="1.4" />
+      <Setter Property="StrokeLineJoin" Value="Round" />
+      <Setter Property="StrokeStartLineCap" Value="Round" />
+      <Setter Property="StrokeEndLineCap" Value="Round" />
+      <Setter Property="Stroke" Value="{StaticResource StickerBarTextBrush}" />
+    </Style>
+
+    <Style x:Key="StickerRule" TargetType="Border">
+      <Setter Property="Width" Value="1" />
+      <Setter Property="Height" Value="16" />
+      <Setter Property="Margin" Value="5,0" />
+      <Setter Property="Background" Value="{StaticResource StickerBarBorderBrush}" />
+    </Style>
+
+    <!-- A 12px tick label above the slider keeps the opacity readable without a tooltip. -->
+    <Style x:Key="StickerReadout" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource StickerBarMutedBrush}" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Margin" Value="6,0,0,0" />
+      <Setter Property="MinWidth" Value="30" />
+    </Style>
+  </Window.Resources>
+
   <Border x:Name="Frame" Background="White" BorderBrush="#C9D1DA" BorderThickness="1" CornerRadius="2"
           MouseEnter="Frame_MouseEnter" MouseLeave="Frame_MouseLeave" MouseLeftButtonDown="Frame_MouseLeftButtonDown"
+          MouseMove="Frame_MouseMove" MouseLeftButtonUp="Frame_MouseLeftButtonUp"
+          LostMouseCapture="Frame_LostMouseCapture"
           DragOver="Frame_DragOver" Drop="Frame_Drop">
     <Border.ContextMenu>
       <ContextMenu>
-        <MenuItem Header="复制" Click="Copy_Click" />
-        <MenuItem Header="保存 PNG" Click="Save_Click" />
+        <MenuItem Header="复制" Click="Copy_Click" InputGestureText="Ctrl+C" />
+        <MenuItem Header="保存 PNG" Click="Save_Click" InputGestureText="Ctrl+S" />
+        <MenuItem Header="另存为..." Click="SaveAs_Click" />
         <MenuItem Header="保存 JPEG" Click="SaveJpeg_Click" />
+        <Separator />
         <MenuItem Header="旋转 90 度" Click="Rotate_Click" />
+        <MenuItem Header="保持原始比例" IsCheckable="True" x:Name="KeepAspectMenuItem" IsChecked="True" Click="KeepAspect_Click" />
         <MenuItem Header="切换阴影" Click="Shadow_Click" />
         <MenuItem Header="切换置顶" Click="AlwaysOnTop_Click" />
         <MenuItem Header="切换鼠标穿透" Click="MouseThrough_Click" />
@@ -28,27 +114,94 @@
       </ContextMenu>
     </Border.ContextMenu>
     <Grid x:Name="Root">
-      <Image x:Name="StickerImage" Stretch="Fill" RenderTransformOrigin="0.5,0.5" />
-      <Border x:Name="Toolbar" VerticalAlignment="Top" Background="#E919212C" Padding="3" Visibility="Collapsed">
+      <Image x:Name="StickerImage" Stretch="Uniform" RenderTransformOrigin="0.5,0.5" />
+
+      <!-- Floating toolbar. Icons with tooltips instead of letter abbreviations:
+           "R", "B", "T", "C", "S", "J" and "X" meant nothing without hovering
+           each one, and the row was the widest part of a small sticker. -->
+      <Border x:Name="Toolbar" VerticalAlignment="Top" Background="{StaticResource StickerBarBrush}"
+              BorderBrush="{StaticResource StickerBarBorderBrush}" BorderThickness="1"
+              CornerRadius="8" Padding="3" Margin="2" Visibility="Collapsed">
+        <Border.Style>
+          <Style TargetType="Border">
+            <Style.Triggers>
+              <!-- Same 120ms arrival as the capture bar, so the two floating toolbars
+                   behave alike when the pointer enters them. -->
+              <Trigger Property="Visibility" Value="Visible">
+                <Trigger.EnterActions>
+                  <BeginStoryboard>
+                    <Storyboard>
+                      <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                       From="0" To="1" Duration="0:0:0.12" />
+                    </Storyboard>
+                  </BeginStoryboard>
+                </Trigger.EnterActions>
+              </Trigger>
+            </Style.Triggers>
+          </Style>
+        </Border.Style>
+        <Border.Effect>
+          <DropShadowEffect BlurRadius="14" ShadowDepth="2" Direction="270" Opacity="0.32" Color="#000000" />
+        </Border.Effect>
         <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
           <StackPanel Orientation="Horizontal">
-            <Button Content="-" ToolTip="缩小" Click="ScaleDown_Click" />
-            <Button Content="+" ToolTip="放大" Click="ScaleUp_Click" />
-            <Button Content="R" ToolTip="旋转 90 度" Click="Rotate_Click" />
-            <Button Content="B" ToolTip="切换边框阴影" Click="Shadow_Click" />
-            <Button Content="T" ToolTip="切换置顶" Click="AlwaysOnTop_Click" />
-            <Button Content="C" ToolTip="复制图片" Click="Copy_Click" />
-            <Button Content="S" ToolTip="保存 PNG" Click="Save_Click" />
-            <Button Content="J" ToolTip="保存 JPEG" Click="SaveJpeg_Click" />
-            <Button Content="输入" ToolTip="切换鼠标穿透（使用全局快捷键恢复输入）" Click="MouseThrough_Click" />
-            <Slider x:Name="OpacitySlider" Width="80" Minimum="0.15" Maximum="1" SmallChange="0.05" ValueChanged="OpacitySlider_ValueChanged" />
-            <Button Content="X" ToolTip="关闭贴图" Click="Close_Click" />
+            <Button Style="{StaticResource StickerButton}" Click="ScaleDown_Click"
+                    ToolTip="缩小（鼠标滚轮）">
+              <Path Style="{StaticResource StickerGlyph}" Data="{StaticResource IconMinus}" Width="12" Height="12" />
+            </Button>
+            <Button Style="{StaticResource StickerButton}" Click="ScaleUp_Click"
+                    ToolTip="放大（鼠标滚轮）">
+              <Path Style="{StaticResource StickerGlyph}" Data="{StaticResource IconPlus}" Width="12" Height="12" />
+            </Button>
+            <Button Style="{StaticResource StickerButton}" Click="Rotate_Click" ToolTip="旋转 90 度">
+              <Path Style="{StaticResource StickerGlyph}" Data="{StaticResource IconRedo}" />
+            </Button>
+            <Border Style="{StaticResource StickerRule}" />
+            <Button Style="{StaticResource StickerButton}" Click="Copy_Click" ToolTip="复制图片（Ctrl+C）">
+              <Path Style="{StaticResource StickerGlyph}" Data="{StaticResource IconCopy}" />
+            </Button>
+            <Button Style="{StaticResource StickerButton}" Click="Save_Click" ToolTip="保存 PNG（Ctrl+S）">
+              <Path Style="{StaticResource StickerGlyph}" Data="{StaticResource IconSave}" />
+            </Button>
+            <Button Style="{StaticResource StickerButton}" Click="SaveJpeg_Click" ToolTip="保存 JPEG">
+              <Path Style="{StaticResource StickerGlyph}" Data="{StaticResource IconCamera}" />
+            </Button>
+            <Border Style="{StaticResource StickerRule}" />
+            <Button Style="{StaticResource StickerButton}" Click="KeepAspect_Click"
+                    ToolTip="保持原始比例（当前已开启）">
+              <Path Style="{StaticResource StickerGlyph}" Data="{StaticResource IconRectangle}" />
+            </Button>
+            <Button Style="{StaticResource StickerButton}" Click="Shadow_Click" ToolTip="切换边框阴影">
+              <Path Style="{StaticResource StickerGlyph}" Data="{StaticResource IconBeautify}" />
+            </Button>
+            <Button Style="{StaticResource StickerButton}" Click="AlwaysOnTop_Click" ToolTip="切换置顶">
+              <Path Style="{StaticResource StickerGlyph}" Data="{StaticResource IconPin}" />
+            </Button>
+            <Button Style="{StaticResource StickerButton}" Click="MouseThrough_Click"
+                    ToolTip="切换鼠标穿透（使用全局快捷键恢复输入）">
+              <Path Style="{StaticResource StickerGlyph}" Data="{StaticResource IconCursor}" />
+            </Button>
+            <Border Style="{StaticResource StickerRule}" />
+            <Slider x:Name="OpacitySlider" Width="76" Minimum="0.15" Maximum="1" SmallChange="0.05"
+                    VerticalAlignment="Center" Margin="3,0,0,0" ToolTip="贴图不透明度"
+                    ValueChanged="OpacitySlider_ValueChanged" />
+            <TextBlock x:Name="OpacityReadout" Style="{StaticResource StickerReadout}" Text="100%" />
+            <Border Style="{StaticResource StickerRule}" />
+            <Button Style="{StaticResource StickerButton}" Click="Close_Click"
+                    ToolTip="关闭贴图（双击贴图也可关闭）">
+              <Path Style="{StaticResource StickerGlyph}" Data="{StaticResource IconClose}" Width="12" Height="12" />
+            </Button>
           </StackPanel>
         </ScrollViewer>
       </Border>
+
+      <Thumb x:Name="ResizeHandle" Width="16" Height="16" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+             Cursor="SizeNWSE" ToolTip="拖动调整贴图大小"
+             DragStarted="ResizeHandle_DragStarted" DragDelta="ResizeHandle_DragDelta" />
       <Border x:Name="MouseThroughBadge" VerticalAlignment="Bottom" HorizontalAlignment="Center"
-              Background="#D9A33A00" Padding="8,3" Margin="4" CornerRadius="2" Visibility="Collapsed" IsHitTestVisible="False">
-        <TextBlock Foreground="White" Text="鼠标已穿透：使用全局快捷键恢复输入" />
+              Background="#E6A33A00" Padding="9,4" Margin="4" CornerRadius="4"
+              BorderBrush="#4DFFFFFF" BorderThickness="1" Visibility="Collapsed" IsHitTestVisible="False">
+        <TextBlock Foreground="White" FontSize="12" Text="鼠标已穿透：使用全局快捷键恢复输入" />
       </Border>
     </Grid>
   </Border>

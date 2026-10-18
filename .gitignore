@@ -13,3 +13,6 @@ TestResults/
 
 # Local application data when running from the repository
 .local/
+
+# Local render harness used while reviewing the UI
+.tmp/

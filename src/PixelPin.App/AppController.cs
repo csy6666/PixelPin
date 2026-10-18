@@ -36,6 +36,7 @@ public sealed class AppController : IDisposable
     {
         _application = application;
         Settings = _settingsService.Load();
+        ThemeService.Apply(ThemeService.Parse(Settings.Theme));
         _historyService.Load();
         _historyService.TrimToLimits(Settings.HistoryLimit, Settings.HistoryDiskLimitMegabytes);
         _logService.Info("应用程序", "控制器已初始化。");
@@ -60,19 +61,26 @@ public sealed class AppController : IDisposable
 
         TrySetStartupRegistration(Settings.StartWithWindows);
 
-        _tray = new TrayService(
-            () => RunOnUi(BeginRegionCapture),
-            () => RunOnUi(CaptureActiveWindow),
-            () => RunOnUi(ShowWindowPicker),
-            () => RunOnUi(PasteImageAsSticker),
-            () => RunOnUi(OpenImageFiles),
-            () => RunOnUi(ShowHistory),
-            () => RunOnUi(ShowStickerManager),
-            () => RunOnUi(ShowSettings),
-            () => RunOnUi(ShowDiagnostics),
-            () => RunOnUi(CloseAllStickers),
-            () => RunOnUi(ShowScrollingCaptureUnavailable),
-            () => RunOnUi(Exit));
+        _tray = new TrayService(new TrayCommands(
+            CaptureRegion: () => RunOnUi(BeginRegionCapture),
+            CaptureRegionAndPin: () => RunOnUi(BeginRegionCaptureAndPin),
+            CaptureFullScreen: () => RunOnUi(CaptureFullScreen),
+            CaptureWindow: () => RunOnUi(CaptureActiveWindow),
+            ChooseWindow: () => RunOnUi(ShowWindowPicker),
+            ScrollingCapture: () => RunOnUi(BeginScrollingCaptureCapture),
+            PasteImage: () => RunOnUi(PasteImageAsSticker),
+            OpenImages: () => RunOnUi(OpenImageFiles),
+            ShowHistory: () => RunOnUi(ShowHistory),
+            ShowStickerManager: () => RunOnUi(ShowStickerManager),
+            ShowSettings: () => RunOnUi(ShowSettings),
+            ShowDiagnostics: () => RunOnUi(ShowDiagnostics),
+            CloseAllStickers: () => RunOnUi(CloseAllStickers),
+            Exit: () => RunOnUi(Exit),
+            CaptureHotKey: Settings.CaptureHotKey,
+            CapturePinHotKey: Settings.CapturePinHotKey,
+            CaptureFullScreenHotKey: Settings.CaptureFullScreenHotKey,
+            PasteStickerHotKey: Settings.PasteStickerHotKey,
+            CloseAllStickersHotKey: Settings.CloseAllStickersHotKey));
 
         if (launchArguments?.Contains("--settings", StringComparer.OrdinalIgnoreCase) == true)
         {
@@ -111,14 +119,9 @@ public sealed class AppController : IDisposable
     {
         candidate.Normalize();
 
-        if (!HotKeyDefinition.TryParse(candidate.CaptureHotKey, out _, out var captureError))
+        if (HotKeyDefinition.ValidateAll(candidate.HotKeySlots) is { } hotKeyError)
         {
-            return $"截图快捷键：{captureError}";
-        }
-
-        if (!HotKeyDefinition.TryParse(candidate.ToggleMouseThroughHotKey, out _, out var mouseThroughError))
-        {
-            return $"鼠标穿透快捷键：{mouseThroughError}";
+            return hotKeyError;
         }
 
         var previous = Settings;
@@ -135,6 +138,7 @@ public sealed class AppController : IDisposable
             _settingsService.Save(candidate);
             TrySetStartupRegistration(candidate.StartWithWindows);
             Settings = candidate;
+            ThemeService.Apply(ThemeService.Parse(candidate.Theme));
             _historyService.TrimToLimits(Settings.HistoryLimit, Settings.HistoryDiskLimitMegabytes);
             return null;
         }
@@ -146,69 +150,19 @@ public sealed class AppController : IDisposable
         }
     }
 
-    public void BeginRegionCapture()
-    {
-        if (_captureInProgress)
-        {
-            return;
-        }
+    public void BeginRegionCapture() => BeginRegionCaptureCore(null);
 
+    public void BeginRegionCaptureAndPin() => BeginRegionCaptureCore(CaptureAction.Pin);
+
+    public void CaptureFullScreen()
+    {
         try
         {
-            _captureInProgress = true;
-            var desktop = _captureService.CaptureDesktop();
-            var overlays = CreateOverlays(desktop);
-            if (overlays.Count == 0)
-            {
-                _captureInProgress = false;
-                ShowError("PixelPin 截图", "Windows 没有报告可截图的显示器。");
-                return;
-            }
-
-            var completed = false;
-            void CloseSession()
-            {
-                foreach (var overlay in overlays)
-                {
-                    overlay.CloseSilently();
-                }
-                _captureInProgress = false;
-            }
-
-            foreach (var overlay in overlays)
-            {
-                overlay.Completed += (image, action) =>
-                {
-                    if (completed)
-                    {
-                        return;
-                    }
-
-                    completed = true;
-                    CloseSession();
-                    HandleCapture(new CaptureOutcome(image), action);
-                };
-                overlay.Cancelled += () =>
-                {
-                    if (completed)
-                    {
-                        return;
-                    }
-
-                    completed = true;
-                    CloseSession();
-                };
-            }
-
-            foreach (var overlay in overlays)
-            {
-                overlay.Show();
-            }
+            HandleCapture(_captureService.CaptureFullScreen(), CaptureAction.Copy);
         }
         catch (Exception exception)
         {
-            _captureInProgress = false;
-            ShowError("PixelPin 截图", exception.Message);
+            ShowError("全屏截图", exception.Message);
         }
     }
 
@@ -276,7 +230,7 @@ public sealed class AppController : IDisposable
         var dialog = new OpenFileDialog
         {
             Title = "打开图片作为贴图",
-            Filter = "图片文件|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff|所有文件|*.*",
+            Filter = "图片文件|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff;*.webp|所有文件|*.*",
             Multiselect = true,
         };
         if (dialog.ShowDialog() != true)
@@ -407,31 +361,108 @@ public sealed class AppController : IDisposable
         _stickers.Clear();
     }
 
-    private List<SelectionOverlayWindow> CreateOverlays(CapturedDesktop desktop)
+    private void BeginRegionCaptureCore(CaptureAction? autoComplete)
     {
-        var overlays = new List<SelectionOverlayWindow>();
-        foreach (var screen in System.Windows.Forms.Screen.AllScreens)
+        if (_captureInProgress)
         {
-            var bounds = screen.Bounds;
-            var crop = new Int32Rect(
-                bounds.Left - desktop.Bounds.Left,
-                bounds.Top - desktop.Bounds.Top,
-                bounds.Width,
-                bounds.Height);
-
-            if (crop.X < 0 || crop.Y < 0
-                || crop.X + crop.Width > desktop.Image.PixelWidth
-                || crop.Y + crop.Height > desktop.Image.PixelHeight)
-            {
-                continue;
-            }
-
-            overlays.Add(new SelectionOverlayWindow(
-                BitmapUtilities.Crop(desktop.Image, crop),
-                bounds));
+            return;
         }
 
-        return overlays;
+        try
+        {
+            _captureInProgress = true;
+
+            // Snapshot the z-order window list before any overlay exists, so the
+            // highlight and snap guides describe the desktop the user still sees.
+            var windows = Settings.HighlightWindowOnHover || Settings.SnapToWindowEdges
+                ? _captureService.EnumerateZOrderWindows()
+                : [];
+            var options = new OverlayOptions(Settings.SnapToWindowEdges, Settings.HighlightWindowOnHover);
+
+            var overlays = _captureService.CaptureScreens()
+                .Select(screen => new SelectionOverlayWindow(screen.Image, screen.Bounds, windows, options, autoComplete))
+                .ToList();
+            if (overlays.Count == 0)
+            {
+                _captureInProgress = false;
+                ShowError("PixelPin 截图", "Windows 没有报告可截图的显示器。");
+                return;
+            }
+
+            var completed = false;
+            Action<BitmapSource, CaptureAction> onCompleted = null!;
+            Action<Int32Rect> onScrollRequested = null!;
+            Action onCancelled = null!;
+
+            void CloseSession()
+            {
+                foreach (var overlay in overlays)
+                {
+                    overlay.Completed -= onCompleted;
+                    overlay.ScrollRequested -= onScrollRequested;
+                    overlay.Cancelled -= onCancelled;
+                    overlay.CloseSilently();
+                }
+                overlays.Clear();
+                _captureInProgress = false;
+            }
+
+            onCompleted = (image, action) =>
+            {
+                if (completed)
+                {
+                    return;
+                }
+
+                completed = true;
+                CloseSession();
+                HandleCapture(new CaptureOutcome(image), action);
+            };
+
+            // The overlay has to be gone before the first frame is taken, otherwise it would
+            // capture itself. The scroll then runs on a background thread: it sleeps between
+            // wheel events, and blocking the dispatcher would freeze the very application it
+            // is waiting for.
+            onScrollRequested = region =>
+            {
+                if (completed)
+                {
+                    return;
+                }
+
+                completed = true;
+                CloseSession();
+                BeginScrollingCapture(region);
+            };
+
+            onCancelled = () =>
+            {
+                if (completed)
+                {
+                    return;
+                }
+
+                completed = true;
+                CloseSession();
+            };
+
+            foreach (var overlay in overlays)
+            {
+                overlay.Completed += onCompleted;
+                overlay.ScrollRequested += onScrollRequested;
+                overlay.Cancelled += onCancelled;
+            }
+
+            foreach (var overlay in overlays)
+            {
+                overlay.Show();
+            }
+        }
+        catch (Exception exception)
+        {
+            _captureInProgress = false;
+            ShowError("PixelPin 截图", exception.Message);
+        }
     }
 
     private void HandleCapture(CaptureOutcome outcome, CaptureAction action)
@@ -491,6 +522,44 @@ public sealed class AppController : IDisposable
         }
     }
 
+    /// <summary>Asks the user for a destination instead of using the configured folder.</summary>
+    private void SaveImageAs(BitmapSource image)
+    {
+        try
+        {
+            var dialog = new SaveFileDialog
+            {
+                Title = "另存为",
+                Filter = "PNG 图片|*.png|JPEG 图片|*.jpg|所有文件|*.*",
+                FileName = BitmapUtilities.BuildFileName(Settings.FileNameTemplate, DateTime.Now),
+                AddExtension = true,
+                DefaultExt = ".png",
+                InitialDirectory = Directory.Exists(Settings.SaveDirectory) ? Settings.SaveDirectory : string.Empty,
+            };
+            if (dialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            var path = dialog.FileName;
+            if (string.Equals(Path.GetExtension(path), ".jpg", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(Path.GetExtension(path), ".jpeg", StringComparison.OrdinalIgnoreCase))
+            {
+                BitmapUtilities.SaveJpegToPath(image, path);
+            }
+            else
+            {
+                BitmapUtilities.SavePngToPath(image, path);
+            }
+
+            _tray?.ShowMessage("PixelPin", $"已保存 {Path.GetFileName(path)}");
+        }
+        catch (Exception exception)
+        {
+            ShowError("另存为", $"无法保存图片：{exception.Message}");
+        }
+    }
+
     private void SaveJpegImage(BitmapSource image)
     {
         try
@@ -510,8 +579,10 @@ public sealed class AppController : IDisposable
             image,
             edited => CopyImage(edited),
             edited => SaveImage(edited),
+            SaveImageAs,
             edited => ShowSticker(edited),
-            AddToHistory);
+            AddToHistory,
+            new EditorOptions(Settings.DefaultAnnotationColor, Settings.DefaultAnnotationStrokeWidth));
         editor.Show();
         editor.Activate();
     }
@@ -520,11 +591,25 @@ public sealed class AppController : IDisposable
     {
         var sticker = new StickyWindow(
             image,
-            Settings.DefaultStickerOpacity,
+            new StickerOptions(
+                Settings.DefaultStickerOpacity,
+                Settings.StickerKeepAspectRatio,
+                Settings.StickerCloseOnDoubleClick),
             CopyImage,
             stickerImage => SaveImage(stickerImage),
-            CacheAndShowSticker,
-            SaveJpegImage);
+            SaveImageAs,
+            SaveJpegImage,
+            CacheAndShowSticker);
+
+        // Dragging aligns against the other visible stickers. Hidden and minimised
+        // ones are excluded so they cannot pull a sticker onto an invisible edge.
+        sticker.SetAlignmentSource(source => _stickers
+            .Where(other => !ReferenceEquals(other, source) && other.IsVisible)
+            .Select(other => other.GetScreenBounds())
+            .ToList());
+
+        sticker.Trace = message => _logService.Info("贴图", message);
+
         sticker.Closed += (_, _) =>
         {
             _stickers.Remove(sticker);
@@ -583,7 +668,7 @@ public sealed class AppController : IDisposable
 
     private void CloseStickerGroup(string group)
     {
-        var normalized = string.IsNullOrWhiteSpace(group) ? "Ungrouped" : group.Trim();
+        var normalized = string.IsNullOrWhiteSpace(group) ? "未分组" : group.Trim();
         foreach (var sticker in _stickers
                      .Where(item => string.Equals(item.GroupName, normalized, StringComparison.OrdinalIgnoreCase))
                      .ToArray())
@@ -602,23 +687,37 @@ public sealed class AppController : IDisposable
             return true;
         }
 
-        if (!HotKeyDefinition.TryParse(settings.CaptureHotKey, out var capture, out error)
-            || !HotKeyDefinition.TryParse(settings.ToggleMouseThroughHotKey, out var mouseThrough, out error))
+        var slots = new (string Label, string Value, Action Handler)[]
         {
-            return false;
+            ("截图快捷键", settings.CaptureHotKey, BeginRegionCapture),
+            ("截图并贴图快捷键", settings.CapturePinHotKey, BeginRegionCaptureAndPin),
+            ("全屏截图快捷键", settings.CaptureFullScreenHotKey, CaptureFullScreen),
+            ("粘贴为贴图快捷键", settings.PasteStickerHotKey, PasteImageAsSticker),
+            ("鼠标穿透快捷键", settings.ToggleMouseThroughHotKey, ToggleLastStickerMouseThrough),
+            ("关闭所有贴图快捷键", settings.CloseAllStickersHotKey, CloseAllStickers),
+        };
+
+        var registered = 0;
+        foreach (var (label, value, handler) in slots)
+        {
+            if (!HotKeyDefinition.TryParse(value, out var definition, out var parseError))
+            {
+                error = $"{label}：{parseError}";
+                _hotKeys.Clear();
+                return false;
+            }
+
+            if (!_hotKeys.TryRegister(definition, handler, out var registrationError))
+            {
+                error = $"{label}（{value}）{registrationError}";
+                _hotKeys.Clear();
+                return false;
+            }
+
+            registered++;
         }
 
-        if (!_hotKeys.TryRegister(capture, BeginRegionCapture, out error))
-        {
-            return false;
-        }
-
-        if (!_hotKeys.TryRegister(mouseThrough, ToggleLastStickerMouseThrough, out error))
-        {
-            _hotKeys.Clear();
-            return false;
-        }
-
+        _logService.Info("快捷键", $"已注册 {registered} 个全局快捷键。");
         return true;
     }
 
@@ -638,6 +737,13 @@ public sealed class AppController : IDisposable
                 : "贴图输入已恢复。");
     }
 
+    /// <summary>
+    /// The scrolling-capture hotkey opens the overlay in scroll mode: the user drags the
+    /// region they want, releases, and the capture starts on its own. Making the hotkey do
+    /// exactly what the normal capture hotkey does would leave the user hunting for a button.
+    /// </summary>
+    private void BeginScrollingCaptureCapture() => BeginRegionCaptureCore(CaptureAction.Scroll);
+
     private void ShowScrollingCaptureUnavailable()
     {
         MessageBox.Show(
@@ -645,6 +751,67 @@ public sealed class AppController : IDisposable
             "PixelPin 滚动截图",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
+    }
+
+    /// <summary>
+    /// Runs a scrolling capture on a region the user already selected. The work happens on a
+    /// background thread because it waits between wheel events, and the result is marshalled
+    /// back before any window is touched.
+    /// </summary>
+    private void BeginScrollingCapture(Int32Rect region)
+    {
+        _captureInProgress = false;
+
+        var progress = new Progress<ScrollCaptureProgress>(report =>
+            _tray?.ShowMessage("PixelPin 滚动截图", report.Message));
+
+        Task.Run(() =>
+        {
+            var service = new ScrollCaptureService(_captureService)
+            {
+                // Every step is logged: when a capture stops early the reason is a measurement,
+                // and the numbers behind it are the only way to tell an unresponsive window
+                // from a selection that included something that does not scroll.
+                Trace = message => _logService.Info("滚动截图", message),
+            };
+
+            var outcome = service.Capture(region, progress);
+            RunOnUi(() => CompleteScrollingCapture(outcome));
+        }).ContinueWith(
+            task =>
+            {
+                var exception = task.Exception?.GetBaseException();
+                if (exception is not null)
+                {
+                    _logService.Error("滚动截图", exception.Message, exception);
+                    RunOnUi(() => ShowError("滚动截图", exception.Message));
+                }
+            },
+            TaskContinuationOptions.OnlyOnFaulted);
+    }
+
+    private void CompleteScrollingCapture(ScrollCaptureOutcome outcome)
+    {
+        if (outcome.Image is null)
+        {
+            _logService.Error("滚动截图", outcome.Failure ?? "滚动截图没有结果。");
+            ShowError("滚动截图", outcome.Failure ?? "滚动截图没有结果。");
+            return;
+        }
+
+        _logService.Info(
+            "滚动截图",
+            $"拼接 {outcome.Frames} 帧，高度 {outcome.StitchedHeight} 像素，停止原因：{outcome.Failure ?? "已到内容末尾"}。");
+
+        // A partial image is real content, so it is kept and opened in the editor. The reason
+        // it stopped is shown as well: without it the user would reasonably assume the image
+        // is the whole page.
+        if (outcome.Failure is { } reason)
+        {
+            _tray?.ShowMessage("PixelPin 滚动截图", reason);
+        }
+
+        HandleCapture(new CaptureOutcome(outcome.Image), CaptureAction.Edit);
     }
 
     private void CaptureSelectedWindow(CaptureWindowDescriptor descriptor)
@@ -681,8 +848,11 @@ public sealed class AppController : IDisposable
         report.AppendLine($"运行时：{Environment.Version}");
         report.AppendLine($"操作系统：{Environment.OSVersion.VersionString}");
         report.AppendLine($"进程架构：{System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}");
-        report.AppendLine($"截图快捷键：{Settings.CaptureHotKey}");
-        report.AppendLine($"鼠标穿透快捷键：{Settings.ToggleMouseThroughHotKey}");
+        foreach (var (label, value) in Settings.HotKeySlots)
+        {
+            report.AppendLine($"{label}：{value}");
+        }
+
         report.AppendLine($"历史记录数量：{_historyService.Items.Count}");
         report.AppendLine($"历史缓存上限：{Settings.HistoryDiskLimitMegabytes} MB");
         report.AppendLine($"当前贴图数量：{_stickers.Count}");
@@ -740,6 +910,7 @@ public sealed class AppController : IDisposable
     {
         var image = new BitmapImage();
         image.BeginInit();
+        image.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
         image.UriSource = new Uri(path, UriKind.Absolute);
         image.CacheOption = BitmapCacheOption.OnLoad;
         image.EndInit();

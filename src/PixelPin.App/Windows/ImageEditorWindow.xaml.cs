@@ -4,40 +4,78 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using PixelPin.Services;
 using PixelPin.Utilities;
 using ShapePath = System.Windows.Shapes.Path;
 
 namespace PixelPin.Windows;
 
+/// <summary>Annotation defaults handed to the editor by the settings page.</summary>
+public sealed record EditorOptions(string Color, double StrokeWidth, double FontSize = 20)
+{
+    public static EditorOptions Default { get; } = new("#E53935", 3);
+}
+
 public partial class ImageEditorWindow : Window
 {
-    private readonly BitmapSource _image;
+    private const int MaximumUndoSteps = 40;
+    private const double MinimumZoom = 0.1;
+    private const double MaximumZoom = 8;
+
     private readonly Action<BitmapSource> _copy;
     private readonly Action<BitmapSource> _save;
+    private readonly Action<BitmapSource> _saveAs;
     private readonly Action<BitmapSource> _pin;
     private readonly Action<BitmapSource> _persist;
     private readonly List<IEditorCommand> _undo = [];
     private readonly List<IEditorCommand> _redo = [];
 
+    private BitmapSource? _image;
     private EditorTool _tool = EditorTool.Rectangle;
-    private Brush _stroke = new SolidColorBrush(Color.FromRgb(0xE5, 0x39, 0x35));
+    private Brush _stroke;
+    private double _fontSize = 20;
+    private double _zoom = 1;
+    private int _sequenceNumber = 1;
     private Point _start;
     private UIElement? _draft;
     private bool _drawing;
+    private BeautifyOptions? _beautify;
 
     public ImageEditorWindow(
         BitmapSource image,
         Action<BitmapSource> copy,
         Action<BitmapSource> save,
+        Action<BitmapSource> saveAs,
         Action<BitmapSource> pin,
-        Action<BitmapSource> persist)
+        Action<BitmapSource> persist,
+        EditorOptions? options = null)
     {
         InitializeComponent();
         _image = image;
         _copy = copy;
         _save = save;
+        _saveAs = saveAs;
         _pin = pin;
         _persist = persist;
+
+        var defaults = options ?? EditorOptions.Default;
+        _fontSize = Math.Clamp(defaults.FontSize, 8, 200);
+        _stroke = CreateFrozenBrush(defaults.Color);
+        StrokeWidthSlider.Value = Math.Clamp(defaults.StrokeWidth, StrokeWidthSlider.Minimum, StrokeWidthSlider.Maximum);
+        StrokeWidthSlider.ValueChanged += (_, _) => UpdateStrokeWidthText();
+        ColorPreview.Fill = _stroke;
+        SelectFontSize(_fontSize);
+        UpdateStrokeWidthText();
+
+        Closed += (_, _) =>
+        {
+            _undo.Clear();
+            _redo.Clear();
+            DrawingCanvas.Children.Clear();
+            _draft = null;
+            BaseImage.Source = null;
+            _image = null;
+        };
 
         BaseImage.Source = image;
         EditorSurface.Width = image.PixelWidth;
@@ -45,37 +83,115 @@ public partial class ImageEditorWindow : Window
         DrawingCanvas.Width = image.PixelWidth;
         DrawingCanvas.Height = image.PixelHeight;
         StatusText.Text = "选择标注工具后在图片上拖动。Ctrl+Z 撤销，Ctrl+Y 重做。";
+        UpdateToolSelection();
+
+        Loaded += (_, _) => FitToWindow();
     }
 
     private void ToolButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: string name } && Enum.TryParse<EditorTool>(name, out var tool))
+        // ToggleButton, not Button: the toolbar has to show which tool is armed.
+        if (sender is System.Windows.Controls.Primitives.ToggleButton { Tag: string name })
         {
-            FinishTextDraft();
-            _tool = tool;
-            StatusText.Text = $"已选择{name switch
+            SelectTool(name);
+        }
+    }
+
+    /// <summary>Activates a tool by its <see cref="EditorTool"/> name.</summary>
+    internal bool SelectTool(string name)
+    {
+        if (!Enum.TryParse<EditorTool>(name, out var tool))
+        {
+            return false;
+        }
+
+        FinishTextDraft();
+        _tool = tool;
+        UpdateToolSelection();
+        StatusText.Text = $"已选择{ToolName(tool)}工具。";
+        return true;
+    }
+
+    /// <summary>
+    /// Mirrors the active tool onto the toolbar. SelectTool is also the entry point
+    /// used by tests and shortcuts, so the visual state cannot live in the click
+    /// handler alone.
+    /// </summary>
+    private void UpdateToolSelection()
+    {
+        foreach (var toggle in FindToolToggles(ToolGroups))
+        {
+            toggle.IsChecked = toggle.Tag is string name
+                && Enum.TryParse<EditorTool>(name, out var tool)
+                && tool == _tool;
+        }
+    }
+
+    /// <summary>
+    /// Walks the panel's own children rather than the visual tree: SelectTool runs
+    /// from the constructor, before any template has been applied, and a visual walk
+    /// would find nothing and leave every toggle unchecked.
+    /// </summary>
+    private static IEnumerable<System.Windows.Controls.Primitives.ToggleButton> FindToolToggles(DependencyObject root)
+    {
+        foreach (var child in LogicalTreeHelper.GetChildren(root))
+        {
+            if (child is System.Windows.Controls.Primitives.ToggleButton { Tag: string } toggle)
             {
-                "Rectangle" => "矩形",
-                "Ellipse" => "椭圆",
-                "Line" => "直线",
-                "Arrow" => "箭头",
-                "Pen" => "画笔",
-                "Mosaic" => "马赛克",
-                "Text" => "文字",
-                _ => name,
-            }}工具。";
+                yield return toggle;
+            }
+            else if (child is DependencyObject node)
+            {
+                foreach (var nested in FindToolToggles(node))
+                {
+                    yield return nested;
+                }
+            }
         }
     }
 
     private void ColorPicker_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (ColorPicker.SelectedItem is not ComboBoxItem { Tag: string hex })
+        // This fires while InitializeComponent is still running, so read the event
+        // source rather than the field, which may not be assigned yet.
+        if (sender is not ComboBox { SelectedItem: ComboBoxItem { Tag: string hex } })
         {
             return;
         }
 
-        _stroke = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
-        _stroke.Freeze();
+        ApplyStroke(CreateFrozenBrush(hex));
+    }
+
+    private void CustomColor_Click(object sender, RoutedEventArgs e)
+    {
+        using var dialog = new System.Windows.Forms.ColorDialog
+        {
+            FullOpen = true,
+            AnyColor = true,
+            Color = System.Drawing.Color.FromArgb(
+                ((SolidColorBrush)_stroke).Color.R,
+                ((SolidColorBrush)_stroke).Color.G,
+                ((SolidColorBrush)_stroke).Color.B),
+        };
+
+        if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+        {
+            return;
+        }
+
+        var color = Color.FromRgb(dialog.Color.R, dialog.Color.G, dialog.Color.B);
+        ColorPicker.SelectedIndex = -1;
+        ApplyStroke(new SolidColorBrush(color));
+    }
+
+    private void FontSizePicker_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // Same InitializeComponent ordering caveat as the colour picker.
+        if (sender is ComboBox { SelectedItem: ComboBoxItem { Content: string text } }
+            && double.TryParse(text, out var size))
+        {
+            _fontSize = Math.Clamp(size, 8, 200);
+        }
     }
 
     private void DrawingCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -85,22 +201,7 @@ public partial class ImageEditorWindow : Window
             return;
         }
 
-        FinishTextDraft();
-        _start = Clamp(e.GetPosition(DrawingCanvas));
-        if (_tool == EditorTool.Text)
-        {
-            CreateTextDraft(_start);
-            e.Handled = true;
-            return;
-        }
-
-        _drawing = true;
-        DrawingCanvas.CaptureMouse();
-        _draft = CreateDraft(_tool, _start);
-        if (_draft is not null)
-        {
-            DrawingCanvas.Children.Add(_draft);
-        }
+        BeginDraw(Clamp(e.GetPosition(DrawingCanvas)));
         e.Handled = true;
     }
 
@@ -111,10 +212,59 @@ public partial class ImageEditorWindow : Window
             return;
         }
 
-        UpdateDraft(_draft, _tool, _start, Clamp(e.GetPosition(DrawingCanvas)));
+        UpdateDraw(Clamp(e.GetPosition(DrawingCanvas)));
     }
 
     private void DrawingCanvas_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_drawing)
+        {
+            return;
+        }
+
+        EndDraw(Clamp(e.GetPosition(DrawingCanvas)));
+    }
+
+    /// <summary>Starts an annotation gesture at <paramref name="point"/> on the drawing canvas.</summary>
+    internal void BeginDraw(Point point)
+    {
+        FinishTextDraft();
+        _start = point;
+
+        if (_tool == EditorTool.Text)
+        {
+            CreateTextDraft(point);
+            return;
+        }
+
+        if (_tool == EditorTool.Sequence)
+        {
+            CommitSequenceMarker(point);
+            return;
+        }
+
+        _drawing = true;
+        DrawingCanvas.CaptureMouse();
+        _draft = CreateDraft(_tool, point);
+        if (_draft is not null)
+        {
+            DrawingCanvas.Children.Add(_draft);
+        }
+    }
+
+    /// <summary>Extends the active gesture to <paramref name="point"/>.</summary>
+    internal void UpdateDraw(Point point)
+    {
+        if (!_drawing || _draft is null)
+        {
+            return;
+        }
+
+        UpdateDraft(_draft, _tool, _start, point);
+    }
+
+    /// <summary>Finishes the active gesture at <paramref name="point"/> and commits it to the undo stack.</summary>
+    internal void EndDraw(Point point)
     {
         if (!_drawing)
         {
@@ -127,17 +277,31 @@ public partial class ImageEditorWindow : Window
         }
 
         _drawing = false;
-        if (_draft is not null)
+        if (_draft is null)
         {
-            UpdateDraft(_draft, _tool, _start, Clamp(e.GetPosition(DrawingCanvas)));
-            CommitVisual(_draft);
-            _draft = null;
+            return;
         }
+
+        var visual = _draft;
+        var tool = _tool;
+        _draft = null;
+        UpdateDraft(visual, tool, _start, point);
+
+        if (tool is EditorTool.Mosaic or EditorTool.Blur)
+        {
+            DrawingCanvas.Children.Remove(visual);
+            CommitRedaction(tool, SelectionGeometry.Normalize(_start, point));
+            return;
+        }
+
+        CommitVisual(visual);
     }
 
     private void Undo_Click(object sender, RoutedEventArgs e) => Undo();
 
     private void Redo_Click(object sender, RoutedEventArgs e) => Redo();
+
+    internal int AnnotationCount => DrawingCanvas.Children.Count;
 
     private void Clear_Click(object sender, RoutedEventArgs e)
     {
@@ -148,21 +312,67 @@ public partial class ImageEditorWindow : Window
         }
 
         Execute(new ClearVisualsCommand(DrawingCanvas.Children.Cast<UIElement>().ToList()));
+        _sequenceNumber = 1;
     }
 
     private void Copy_Click(object sender, RoutedEventArgs e) => _copy(RenderImage());
 
     private void Save_Click(object sender, RoutedEventArgs e) => _save(RenderImage());
 
+    private void SaveAs_Click(object sender, RoutedEventArgs e) => _saveAs(RenderImage());
+
     private void Pin_Click(object sender, RoutedEventArgs e) => _pin(RenderImage());
 
     private void Ocr_Click(object sender, RoutedEventArgs e)
     {
-        MessageBox.Show(
-            "OCR 功能需要配置 Windows OCR 语言组件后才能启用。当前编辑器不会生成猜测或不完整的识别结果。",
-            "PixelPin OCR",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
+        // The reason is reported verbatim rather than replaced with a generic message, so
+        // the user learns which language component is missing.
+        var reason = OcrService.UnavailableReason;
+        if (reason is not null)
+        {
+            MessageBox.Show(reason, "PixelPin 文字识别", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var window = new OcrWindow(RenderImage(), CopyText) { Owner = this };
+        window.Show();
+    }
+
+    /// <summary>Places recognised text on the clipboard as text, not as an image.</summary>
+    private static void CopyText(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(text);
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                $"无法复制文字：{exception.Message}",
+                "PixelPin 文字识别",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    private void Beautify_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new BeautifyWindow(RenderImage(), _beautify)
+        {
+            Owner = this,
+        };
+
+        if (dialog.ShowDialog() != true || !dialog.Applied)
+        {
+            return;
+        }
+
+        SetBeautify(dialog.Result);
     }
 
     private void Done_Click(object sender, RoutedEventArgs e)
@@ -171,26 +381,77 @@ public partial class ImageEditorWindow : Window
         Close();
     }
 
+    private void ZoomFit_Click(object sender, RoutedEventArgs e) => FitToWindow();
+
+    private void ZoomActual_Click(object sender, RoutedEventArgs e) => ApplyZoom(1);
+
+    private void ZoomIn_Click(object sender, RoutedEventArgs e) => ApplyZoom(_zoom * 1.25);
+
+    private void ZoomOut_Click(object sender, RoutedEventArgs e) => ApplyZoom(_zoom / 1.25);
+
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.Z)
+        var control = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
+        var shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
+
+        if (control && shift && e.Key == Key.S)
+        {
+            _saveAs(RenderImage());
+            e.Handled = true;
+        }
+        else if (control && e.Key == Key.Z)
         {
             Undo();
             e.Handled = true;
         }
-        else if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.Y)
+        else if (control && e.Key == Key.Y)
         {
             Redo();
             e.Handled = true;
         }
-        else if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.C)
+        else if (control && e.Key == Key.C)
         {
             _copy(RenderImage());
             e.Handled = true;
         }
-        else if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.S)
+        else if (control && e.Key == Key.S)
         {
             _save(RenderImage());
+            e.Handled = true;
+        }
+        else if (control && e.Key == Key.P)
+        {
+            _pin(RenderImage());
+            e.Handled = true;
+        }
+        else if (control && e.Key == Key.B)
+        {
+            Beautify_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (control && shift && e.Key == Key.O)
+        {
+            Ocr_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (control && e.Key is Key.OemPlus or Key.Add)
+        {
+            ApplyZoom(_zoom * 1.25);
+            e.Handled = true;
+        }
+        else if (control && e.Key is Key.OemMinus or Key.Subtract)
+        {
+            ApplyZoom(_zoom / 1.25);
+            e.Handled = true;
+        }
+        else if (control && e.Key == Key.D0)
+        {
+            ApplyZoom(1);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            CancelTextDraft();
             e.Handled = true;
         }
     }
@@ -211,6 +472,11 @@ public partial class ImageEditorWindow : Window
                 StrokeThickness = StrokeWidthSlider.Value,
                 Fill = Brushes.Transparent,
             },
+            EditorTool.Highlight => new Rectangle
+            {
+                Fill = CreateHighlightBrush(),
+                Stroke = null,
+            },
             EditorTool.Line or EditorTool.Arrow => new ShapePath
             {
                 Stroke = _stroke,
@@ -227,7 +493,13 @@ public partial class ImageEditorWindow : Window
                 StrokeEndLineCap = PenLineCap.Round,
                 Points = new PointCollection { start },
             },
-            EditorTool.Mosaic => CreateMosaicDraft(start),
+            EditorTool.Mosaic or EditorTool.Blur => new Rectangle
+            {
+                Stroke = Brushes.White,
+                StrokeThickness = 1,
+                StrokeDashArray = new DoubleCollection { 3, 2 },
+                Fill = new SolidColorBrush(Color.FromArgb(48, 0, 0, 0)),
+            },
             _ => null,
         };
     }
@@ -239,6 +511,9 @@ public partial class ImageEditorWindow : Window
         {
             case EditorTool.Rectangle:
             case EditorTool.Ellipse:
+            case EditorTool.Highlight:
+            case EditorTool.Mosaic:
+            case EditorTool.Blur:
                 if (visual is FrameworkElement element)
                 {
                     Canvas.SetLeft(element, area.Left);
@@ -246,6 +521,7 @@ public partial class ImageEditorWindow : Window
                     element.Width = area.Width;
                     element.Height = area.Height;
                 }
+
                 break;
 
             case EditorTool.Line:
@@ -254,6 +530,7 @@ public partial class ImageEditorWindow : Window
                 {
                     path.Data = BuildLineGeometry(start, end, tool == EditorTool.Arrow);
                 }
+
                 break;
 
             case EditorTool.Pen:
@@ -261,24 +538,94 @@ public partial class ImageEditorWindow : Window
                 {
                     line.Points.Add(end);
                 }
-                break;
 
-            case EditorTool.Mosaic:
-                if (visual is Image mosaic)
-                {
-                    UpdateMosaicDraft(mosaic, area);
-                }
                 break;
         }
+    }
+
+    /// <summary>Redaction regions already committed, for diagnostics and tests.</summary>
+    internal int RedactionCount { get; private set; }
+
+    /// <summary>
+    /// Mosaic and blur are baked into a bitmap overlay instead of a live XAML effect,
+    /// so the exported PNG matches the preview pixel for pixel.
+    /// </summary>
+    private void CommitRedaction(EditorTool tool, Rect area)
+    {
+        var source = _image;
+        if (source is null || area.Width < 2 || area.Height < 2)
+        {
+            return;
+        }
+
+        var region = ToPixelRect(area);
+        if (region.Width < 1 || region.Height < 1)
+        {
+            return;
+        }
+
+        try
+        {
+            var processed = tool == EditorTool.Mosaic
+                ? ImageProcessing.Pixelate(source, region, Math.Max(ImageProcessing.MinimumBlockSize, region.Width / 14))
+                : ImageProcessing.BoxBlur(source, region, Math.Max(ImageProcessing.MinimumBlurRadius, region.Width / 60));
+
+            var visual = new Image
+            {
+                Source = processed,
+                Stretch = Stretch.Fill,
+                SnapsToDevicePixels = true,
+                IsHitTestVisible = false,
+            };
+            RenderOptions.SetBitmapScalingMode(
+                visual,
+                tool == EditorTool.Mosaic ? BitmapScalingMode.NearestNeighbor : BitmapScalingMode.HighQuality);
+            Canvas.SetLeft(visual, area.Left);
+            Canvas.SetTop(visual, area.Top);
+            visual.Width = area.Width;
+            visual.Height = area.Height;
+            RedactionCount++;
+            CommitVisual(visual);
+        }
+        catch (Exception exception)
+        {
+            StatusText.Text = $"无法处理该区域：{exception.Message}";
+        }
+    }
+
+    private void CommitSequenceMarker(Point point)
+    {
+        var diameter = Math.Max(18, _fontSize * 1.5);
+        var grid = new Grid
+        {
+            Width = diameter,
+            Height = diameter,
+            IsHitTestVisible = false,
+        };
+        grid.Children.Add(new Ellipse { Fill = _stroke });
+        grid.Children.Add(new TextBlock
+        {
+            Text = _sequenceNumber.ToString(),
+            Foreground = Brushes.White,
+            FontSize = Math.Max(10, diameter * 0.5),
+            FontWeight = FontWeights.Bold,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+
+        Canvas.SetLeft(grid, point.X - diameter / 2);
+        Canvas.SetTop(grid, point.Y - diameter / 2);
+        _sequenceNumber++;
+        CommitVisual(grid);
     }
 
     private void CreateTextDraft(Point point)
     {
         var box = new TextBox
         {
-            Width = 260,
-            MinHeight = 28,
-            FontSize = 18,
+            Width = 280,
+            MinHeight = 30,
+            FontSize = _fontSize,
             Foreground = _stroke,
             Background = new SolidColorBrush(Color.FromArgb(220, 255, 255, 255)),
             BorderBrush = _stroke,
@@ -352,48 +699,7 @@ public partial class ImageEditorWindow : Window
         }
     }
 
-    private Image CreateMosaicDraft(Point point)
-    {
-        var image = new Image
-        {
-            Stretch = Stretch.Fill,
-            SnapsToDevicePixels = true,
-        };
-        RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.NearestNeighbor);
-        Canvas.SetLeft(image, point.X);
-        Canvas.SetTop(image, point.Y);
-        return image;
-    }
-
-    private void UpdateMosaicDraft(Image visual, Rect area)
-    {
-        if (area.Width < 2 || area.Height < 2)
-        {
-            return;
-        }
-
-        var pixels = ToPixelRect(area);
-        if (pixels.Width < 1 || pixels.Height < 1)
-        {
-            return;
-        }
-
-        var crop = new CroppedBitmap(_image, pixels);
-        var targetWidth = Math.Max(1, pixels.Width / 12);
-        var targetHeight = Math.Max(1, pixels.Height / 12);
-        var reduced = new TransformedBitmap(crop, new ScaleTransform(
-            (double)targetWidth / pixels.Width,
-            (double)targetHeight / pixels.Height));
-        reduced.Freeze();
-
-        visual.Source = reduced;
-        Canvas.SetLeft(visual, area.Left);
-        Canvas.SetTop(visual, area.Top);
-        visual.Width = area.Width;
-        visual.Height = area.Height;
-    }
-
-    private BitmapSource RenderImage()
+    internal BitmapSource RenderImage()
     {
         FinishTextDraft();
         EditorSurface.Measure(new Size(EditorSurface.Width, EditorSurface.Height));
@@ -408,8 +714,27 @@ public partial class ImageEditorWindow : Window
             PixelFormats.Pbgra32);
         bitmap.Render(EditorSurface);
         bitmap.Freeze();
-        return bitmap;
+
+        // Beautification is applied to the flattened result, so every export path
+        // (copy, save, save-as, pin, done) produces the same presented image.
+        return _beautify is null ? bitmap : ImageBeautifier.Beautify(bitmap, _beautify);
     }
+
+    /// <summary>Applies or clears the sharing presentation. Null restores the raw export.</summary>
+    internal void SetBeautify(BeautifyOptions? options)
+    {
+        _beautify = options?.Normalize();
+        BeautifyButton.Content = _beautify is null ? "美化" : "美化 ✓";
+        // The toolbar style keys off Tag, so the active state survives a theme change
+        // without a second copy of the colours in code.
+        BeautifyButton.Tag = _beautify is null ? null : "active";
+        StatusText.Text = _beautify is null
+            ? "已取消美化，导出为原始尺寸。"
+            : $"已启用美化，导出尺寸为原图加 {_beautify.Padding:0} 像素边距。";
+    }
+
+    /// <summary>True while a sharing presentation is applied; used by the desktop probe.</summary>
+    internal bool HasBeautify => _beautify is not null;
 
     private void CommitVisual(UIElement visual)
     {
@@ -420,22 +745,16 @@ public partial class ImageEditorWindow : Window
     {
         command.Do(DrawingCanvas);
         _undo.Add(command);
-        _redo.Clear();
-        StatusText.Text = $"已添加{_tool switch
+        if (_undo.Count > MaximumUndoSteps)
         {
-            EditorTool.Rectangle => "矩形",
-            EditorTool.Ellipse => "椭圆",
-            EditorTool.Line => "直线",
-            EditorTool.Arrow => "箭头",
-            EditorTool.Pen => "画笔",
-            EditorTool.Mosaic => "马赛克",
-            EditorTool.Text => "文字",
-            _ => "标注",
-        }}。";
+            _undo.RemoveAt(0);
+        }
+
+        _redo.Clear();
+        StatusText.Text = $"已添加{ToolName(_tool)}。";
     }
 
-    private void Undo()
-    {
+    internal void Undo()    {
         FinishTextDraft();
         if (_undo.Count == 0)
         {
@@ -446,10 +765,15 @@ public partial class ImageEditorWindow : Window
         _undo.RemoveAt(_undo.Count - 1);
         command.Undo(DrawingCanvas);
         _redo.Add(command);
+        if (_redo.Count > MaximumUndoSteps)
+        {
+            _redo.RemoveAt(0);
+        }
+
         StatusText.Text = "已撤销上一次标注。";
     }
 
-    private void Redo()
+    internal void Redo()
     {
         if (_redo.Count == 0)
         {
@@ -460,8 +784,140 @@ public partial class ImageEditorWindow : Window
         _redo.RemoveAt(_redo.Count - 1);
         command.Do(DrawingCanvas);
         _undo.Add(command);
+        if (_undo.Count > MaximumUndoSteps)
+        {
+            _undo.RemoveAt(0);
+        }
+
         StatusText.Text = "已重做标注。";
     }
+
+    private void ApplyStroke(Brush brush)
+    {
+        _stroke = brush;
+        if (ColorPreview is not null)
+        {
+            ColorPreview.Fill = brush;
+        }
+
+        // The colour ComboBox raises SelectionChanged while InitializeComponent is
+        // still running, before the drawing surface exists. Only the field matters then.
+        if (DrawingCanvas is null)
+        {
+            return;
+        }
+
+        // Apply to the existing annotations so the preview swatch and the drawn
+        // annotation can never disagree.
+        foreach (var child in DrawingCanvas.Children)
+        {
+            switch (child)
+            {
+                case Shape { Stroke: not null } shape:
+                    shape.Stroke = brush;
+                    break;
+                case TextBlock text:
+                    text.Foreground = brush;
+                    break;
+            }
+        }
+    }
+
+    private void SelectFontSize(double size)
+    {
+        foreach (var item in FontSizePicker.Items.OfType<ComboBoxItem>())
+        {
+            if (item.Content is string text && double.TryParse(text, out var value)
+                && Math.Abs(value - size) < 0.5)
+            {
+                FontSizePicker.SelectedItem = item;
+                return;
+            }
+        }
+
+        FontSizePicker.SelectedIndex = 2;
+        _fontSize = 20;
+    }
+
+    private void UpdateStrokeWidthText()
+    {
+        if (StrokeWidthText is not null)
+        {
+            StrokeWidthText.Text = ((int)StrokeWidthSlider.Value).ToString();
+        }
+    }
+
+    private void FitToWindow()
+    {
+        if (EditorSurface.Width <= 0 || EditorSurface.Height <= 0)
+        {
+            return;
+        }
+
+        var viewportWidth = SurfaceScroller.ViewportWidth > 0 ? SurfaceScroller.ViewportWidth : SurfaceScroller.ActualWidth;
+        var viewportHeight = SurfaceScroller.ViewportHeight > 0 ? SurfaceScroller.ViewportHeight : SurfaceScroller.ActualHeight;
+        if (viewportWidth <= 8 || viewportHeight <= 8)
+        {
+            return;
+        }
+
+        var scale = Math.Min(
+            (viewportWidth - 24) / EditorSurface.Width,
+            (viewportHeight - 24) / EditorSurface.Height);
+        ApplyZoom(scale > 1 ? 1 : scale);
+    }
+
+    private void ApplyZoom(double zoom)
+    {
+        _zoom = Math.Clamp(zoom, MinimumZoom, MaximumZoom);
+        ZoomTransform.ScaleX = _zoom;
+        ZoomTransform.ScaleY = _zoom;
+        ZoomText.Text = $"{_zoom * 100:0}%";
+    }
+
+    private Brush CreateHighlightBrush()
+    {
+        var color = _stroke is SolidColorBrush solid ? solid.Color : Colors.Gold;
+        var brush = new SolidColorBrush(Color.FromArgb(96, color.R, color.G, color.B));
+        brush.Freeze();
+        return brush;
+    }
+
+    private static SolidColorBrush CreateFrozenBrush(string hex)
+    {
+        SolidColorBrush brush;
+        try
+        {
+            brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+        }
+        catch (FormatException)
+        {
+            brush = new SolidColorBrush(Colors.Red);
+        }
+        catch (NotSupportedException)
+        {
+            brush = new SolidColorBrush(Colors.Red);
+        }
+
+        brush.Freeze();
+        return brush;
+    }
+
+    private static string ToolName(EditorTool tool) => tool switch
+    {
+        EditorTool.Select => "选择",
+        EditorTool.Rectangle => "矩形",
+        EditorTool.Ellipse => "椭圆",
+        EditorTool.Line => "直线",
+        EditorTool.Arrow => "箭头",
+        EditorTool.Pen => "画笔",
+        EditorTool.Highlight => "高亮",
+        EditorTool.Mosaic => "马赛克",
+        EditorTool.Blur => "模糊",
+        EditorTool.Sequence => "序号",
+        EditorTool.Text => "文字",
+        _ => "标注",
+    };
 
     private static Geometry BuildLineGeometry(Point start, Point end, bool arrow)
     {
@@ -498,10 +954,11 @@ public partial class ImageEditorWindow : Window
 
     private Int32Rect ToPixelRect(Rect area)
     {
-        var x = Math.Clamp((int)Math.Floor(area.Left), 0, _image.PixelWidth - 1);
-        var y = Math.Clamp((int)Math.Floor(area.Top), 0, _image.PixelHeight - 1);
-        var right = Math.Clamp((int)Math.Ceiling(area.Right), x + 1, _image.PixelWidth);
-        var bottom = Math.Clamp((int)Math.Ceiling(area.Bottom), y + 1, _image.PixelHeight);
+        var image = _image ?? throw new InvalidOperationException("标注图像已关闭。");
+        var x = Math.Clamp((int)Math.Floor(area.Left), 0, image.PixelWidth - 1);
+        var y = Math.Clamp((int)Math.Floor(area.Top), 0, image.PixelHeight - 1);
+        var right = Math.Clamp((int)Math.Ceiling(area.Right), x + 1, image.PixelWidth);
+        var bottom = Math.Clamp((int)Math.Ceiling(area.Bottom), y + 1, image.PixelHeight);
         return new Int32Rect(x, y, right - x, bottom - y);
     }
 
@@ -576,7 +1033,10 @@ public partial class ImageEditorWindow : Window
         Line,
         Arrow,
         Pen,
+        Highlight,
         Mosaic,
+        Blur,
+        Sequence,
         Text,
     }
 }
