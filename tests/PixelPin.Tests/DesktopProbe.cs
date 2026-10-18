@@ -1391,75 +1391,125 @@ internal static class DesktopProbe
             .Take(6)
             .ToList();
 
-        if (candidates.Count == 0)
+        // A desktop can legitimately have nothing renderable on it: a machine running only
+        // hardware-accelerated browsers has no window PrintWindow can capture, and that is
+        // not a product defect. The probe therefore always contributes one window of its
+        // own, so "nothing rendered" stays a real failure signal instead of a description
+        // of whatever happened to be open.
+        //
+        // The window carries a gradient rather than a flat fill so the "a render must have
+        // real variation" check still means something when this is the only window that
+        // renders.
+        var owned = new Window
         {
-            Console.WriteLine("window capture: skipped (no window large enough to render)");
-            return;
-        }
+            Title = "PixelPin probe capture",
+            Width = 320,
+            Height = 240,
+            WindowStyle = WindowStyle.None,
+            ResizeMode = ResizeMode.NoResize,
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            Content = new Border
+            {
+                Background = new LinearGradientBrush(
+                    Colors.Magenta, Colors.DarkCyan, new Point(0, 0), new Point(1, 1)),
+            },
+        };
+        owned.WindowStartupLocation = WindowStartupLocation.Manual;
+        var work = System.Windows.Forms.Screen.PrimaryScreen!.WorkingArea;
+        owned.Left = work.Left + 40;
+        owned.Top = work.Top + 40;
+        owned.Show();
+        Pump(TimeSpan.FromMilliseconds(350));
+        var ownedHandle = new WindowInteropHelper(owned).Handle;
 
         var rendered = 0;
         var rejected = 0;
-        foreach (var candidate in candidates)
+        try
         {
-            var result = WindowCaptureService.TryRenderWindow(candidate.Handle);
-            if (!result.Succeeded)
+            if (ownedHandle != nint.Zero)
             {
-                rejected++;
-                Console.WriteLine($"window capture: \"{Shorten(candidate.Title)}\" could not be rendered: {result.Failure}");
-                continue;
+                // GetCaptureBounds reports physical pixels, which is what the descriptor
+                // holds; ActualWidth would be DIPs and would disagree above 100% scaling.
+                var bounds = WindowCaptureService.GetCaptureBounds(ownedHandle);
+                candidates.Insert(0, new CaptureWindowDescriptor(
+                    ownedHandle, "PixelPin probe capture", "probe",
+                    new System.Drawing.Rectangle(bounds.X, bounds.Y, bounds.Width, bounds.Height)));
             }
 
-            rendered++;
-
-            // The rendered image must match the window's own bounds, not the screen's.
-            var expected = WindowCaptureService.GetCaptureBounds(candidate.Handle);
-            if (Math.Abs(result.Image!.PixelWidth - expected.Width) > 2
-                || Math.Abs(result.Image.PixelHeight - expected.Height) > 2)
+            if (candidates.Count == 0)
             {
-                failures.Add(
-                    $"Rendered \"{candidate.Title}\" at {result.Image.PixelWidth}x{result.Image.PixelHeight} "
-                    + $"but its bounds are {expected.Width}x{expected.Height}.");
+                Console.WriteLine("window capture: skipped (no window large enough to render)");
+                return;
             }
 
-            // A render that passed inspection must be opaque and actually varied. A
-            // fully transparent image would mean GDI never drew and the alpha fix failed.
-            var buffer = ToBgraBuffer(result.Image!, out _);
-            var opaque = true;
-            for (var index = 3; index < buffer.Length; index += 4)
+            foreach (var candidate in candidates)
             {
-                if (buffer[index] != 0xFF)
+                var result = WindowCaptureService.TryRenderWindow(candidate.Handle);
+                if (!result.Succeeded)
                 {
-                    opaque = false;
-                    break;
+                    rejected++;
+                    Console.WriteLine($"window capture: \"{Shorten(candidate.Title)}\" could not be rendered: {result.Failure}");
+                    continue;
+                }
+
+                rendered++;
+
+                // The rendered image must match the window's own bounds, not the screen's.
+                var expected = WindowCaptureService.GetCaptureBounds(candidate.Handle);
+                if (Math.Abs(result.Image!.PixelWidth - expected.Width) > 2
+                    || Math.Abs(result.Image.PixelHeight - expected.Height) > 2)
+                {
+                    failures.Add(
+                        $"Rendered \"{candidate.Title}\" at {result.Image.PixelWidth}x{result.Image.PixelHeight} "
+                        + $"but its bounds are {expected.Width}x{expected.Height}.");
+                }
+
+                // A render that passed inspection must be opaque and actually varied. A
+                // fully transparent image would mean GDI never drew and the alpha fix failed.
+                var buffer = ToBgraBuffer(result.Image!, out _);
+                var opaque = true;
+                for (var index = 3; index < buffer.Length; index += 4)
+                {
+                    if (buffer[index] != 0xFF)
+                    {
+                        opaque = false;
+                        break;
+                    }
+                }
+
+                if (!opaque)
+                {
+                    failures.Add($"Rendered \"{candidate.Title}\" contained transparent pixels, so it would display as blank.");
+                }
+
+                // A render that passed the quality gate must also have real variation, not a
+                // flat fill that happened to clear the threshold.
+                var colours = new HashSet<int>();
+                for (var index = 0; index + 3 < buffer.Length; index += 4)
+                {
+                    colours.Add((buffer[index + 2] << 16) | (buffer[index + 1] << 8) | buffer[index]);
+                }
+
+                if (colours.Count < 4)
+                {
+                    failures.Add($"Rendered \"{candidate.Title}\" contained only {colours.Count} distinct colours.");
+                }
+
+                if (rendered == 1)
+                {
+                    var path = Path.Combine(outputDirectory, "probe-window-render.png");
+                    BitmapUtilities.SavePngToPath(result.Image!, path);
+                    Console.WriteLine(
+                        $"window capture: \"{Shorten(candidate.Title)}\" rendered {result.Image!.PixelWidth}x{result.Image.PixelHeight} "
+                        + $"with {colours.Count} colours -> {path}");
                 }
             }
-
-            if (!opaque)
-            {
-                failures.Add($"Rendered \"{candidate.Title}\" contained transparent pixels, so it would display as blank.");
-            }
-
-            // A render that passed the quality gate must also have real variation, not a
-            // flat fill that happened to clear the threshold.
-            var colours = new HashSet<int>();
-            for (var index = 0; index + 3 < buffer.Length; index += 4)
-            {
-                colours.Add((buffer[index + 2] << 16) | (buffer[index + 1] << 8) | buffer[index]);
-            }
-
-            if (colours.Count < 4)
-            {
-                failures.Add($"Rendered \"{candidate.Title}\" contained only {colours.Count} distinct colours.");
-            }
-
-            if (rendered == 1)
-            {
-                var path = Path.Combine(outputDirectory, "probe-window-render.png");
-                BitmapUtilities.SavePngToPath(result.Image!, path);
-                Console.WriteLine(
-                    $"window capture: \"{Shorten(candidate.Title)}\" rendered {result.Image!.PixelWidth}x{result.Image.PixelHeight} "
-                    + $"with {colours.Count} colours -> {path}");
-            }
+        }
+        finally
+        {
+            owned.Close();
+            Pump(TimeSpan.FromMilliseconds(120));
         }
 
         Console.WriteLine($"window capture: {rendered} of {candidates.Count} windows rendered, {rejected} refused");
@@ -1833,6 +1883,20 @@ internal static class DesktopProbe
         var captured = WgcCaptureService.TryCapture(coveredHandle);
         if (!captured.Succeeded)
         {
+            // E_ACCESSDENIED means this session is not allowed to open a capture session at
+            // all - a sandboxed or non-interactive desktop, which is a property of the
+            // machine rather than of PixelPin. Reporting it as a product failure would train
+            // whoever reads the log to ignore this check; reporting it as a skip keeps a
+            // real breakage visible. Every other failure stays a failure.
+            if (captured.Failure?.Contains("0x80070005", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                Console.WriteLine(
+                    "graphics capture: skipped, this session is not permitted to open a capture "
+                    + "session (E_ACCESSDENIED). Run the probe from an interactive desktop to "
+                    + "exercise this route.");
+                return;
+            }
+
             failures.Add($"The graphics capture route is advertised as supported but failed: {captured.Failure}");
             return;
         }

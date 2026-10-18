@@ -129,6 +129,24 @@ public partial class StickyWindow : Window
         NotifyStateChanged();
     }
 
+    /// <summary>
+    /// Puts the window back in the topmost band without activating it. Used after a
+    /// resume or an unlock, where activating would steal focus from whatever the user
+    /// came back to.
+    /// </summary>
+    public void ReassertTopmost()
+    {
+        if (!Topmost)
+        {
+            return;
+        }
+
+        // Assigning the same value is a no-op, so the style has to be dropped and
+        // reapplied for Windows to push the window back above everything else.
+        Topmost = false;
+        Topmost = true;
+    }
+
     public void SetKeepAspectRatio(bool enabled)
     {
         _keepAspectRatio = enabled;

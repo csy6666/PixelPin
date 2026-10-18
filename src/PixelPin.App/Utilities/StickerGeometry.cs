@@ -107,6 +107,40 @@ public static class StickerGeometry
             : aspectRatio;
     }
 
+    /// <summary>
+    /// Keeps a sticker reachable after the desktop changes shape. A monitor that was
+    /// unplugged, a resolution that shrank, or a remote session that ended can all
+    /// leave a window at coordinates no screen covers any more; the window is still
+    /// running and still holding its image, but there is nothing to click.
+    ///
+    /// A window that is already at least partly visible is returned untouched, so a
+    /// deliberate overhang - half a sticker off the edge - survives a resolution change.
+    /// Only a window with no visible area is pulled back, and then it is moved by the
+    /// smallest amount that puts a corner on screen.
+    /// </summary>
+    public static Rect ClampIntoDesktop(Rect window, Rect desktop)
+    {
+        if (desktop.Width <= 0 || desktop.Height <= 0 || window.Width <= 0 || window.Height <= 0)
+        {
+            return window;
+        }
+
+        // Any overlap at all means the user can still grab it.
+        var visible = Rect.Intersect(window, desktop);
+        if (!visible.IsEmpty && visible.Width >= MinimumWidth / 2 && visible.Height >= MinimumHeight / 2)
+        {
+            return window;
+        }
+
+        // Prefer the last known offset when the desktop grew back, otherwise pin the
+        // window inside the new bounds. Either way the whole window ends up visible.
+        var width = Math.Min(window.Width, desktop.Width);
+        var height = Math.Min(window.Height, desktop.Height);
+        var left = Math.Clamp(window.Left, desktop.Left, desktop.Right - width);
+        var top = Math.Clamp(window.Top, desktop.Top, desktop.Bottom - height);
+        return new Rect(left, top, window.Width, window.Height);
+    }
+
     private static Size ClampFree(Size size)
     {
         return new Size(

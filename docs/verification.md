@@ -19,6 +19,20 @@ The scrolling tests assert the four things that make the feature honest rather t
 
 The shortcut tests deliberately round-trip recorder output back through the parser. That check caught a real defect: `Enum.TryParse` reads a bare numeric string as the enum's underlying value, so a recorded `Ctrl+1` was displayed as `Ctrl+1` and read back as `Key.Cancel`, silently changing the shortcut after a restart.
 
+The clamp-into-desktop tests are the one part of the environment-recovery work that is checked automatically. They assert the four cases that matter and would each be wrong in a different way: a window left entirely on a removed monitor comes back inside the bounds; a deliberate overhang that is still reachable is *not* moved, because nudging a layout the user chose is its own defect; a monitor to the left of the primary one (negative coordinates) is treated as real space; and an empty desktop rectangle is a no-op rather than a source of `NaN` coordinates. The rest of the recovery path - hotkey re-registration, topmost re-assertion - needs a real display change or a real suspend, and is covered only by the manual gate below.
+
+## Environment recovery
+
+`EnvironmentWatchService` listens for three notifications and the application coalesces them into one recovery pass 400 ms after they stop arriving:
+
+| Notification | Why it matters | What the recovery does |
+| --- | --- | --- |
+| `DisplaySettingsChanged` | Monitors added, removed, or re-resolved move the desktop origin. A sticker keeps absolute coordinates, so one on the removed monitor is running and unreachable. | Clamps every sticker back into `SystemParameters.VirtualScreen*` and re-asserts the topmost band. |
+| `PowerModeChanged` = `Resume` | A low-level keyboard hook that misses its timeout is removed by Windows silently. The hook is the compatibility path for applications that swallow the shortcut. | Clears and re-registers every global hotkey. |
+| `SessionSwitch` = `SessionUnlock` / `RemoteConnect` | Same as above, plus a remote session can change the desktop geometry entirely. | Both of the above. |
+
+Clearing before re-registering is not optional: `RegisterHotKey` returns `ERROR_HOTKEY_ALREADY_REGISTERED` for an id that is still live, so a plain re-register would report a bogus conflict and leave the user with no shortcuts.
+
 ## Desktop probe
 
 The probe needs a signed-in interactive desktop and exercises the real capture path. It is opt-in:
@@ -26,6 +40,8 @@ The probe needs a signed-in interactive desktop and exercises the real capture p
 ~~~powershell
 dotnet run --project .\tests\PixelPin.Tests\PixelPin.Tests.csproj -c Release -- --desktop-probe .\artifacts\probe
 ~~~
+
+Both the probe and the unit checks redirect every file they write through `PIXELPIN_DATA_DIR`, which the test entry point sets to a folder under the temp directory before any PixelPin type is touched. Without it a run writes into the real `%LocalAppData%\PixelPin`, which is both a risk to the user's own history and an outright failure on a machine that denies that path.
 
 | Probe check | What it proves |
 | --- | --- |
@@ -44,8 +60,8 @@ dotnet run --project .\tests\PixelPin.Tests\PixelPin.Tests.csproj -c Release -- 
 | Beautified export | The exported pixels are inspected: the frame is the gradient background rather than the shadow caster, the picture centre is unmoved, and the rounded corner is genuinely cut away. |
 | Shortcut recorder | A real `PreviewKeyDown` is raised on the settings page's shortcut field, proving the XAML `EventSetter` is wired, the field is read-only, and `Backspace` and `Esc` behave. |
 | OCR round trip | Text is rendered to a bitmap with known content and recognised back. Latin scores 1.00 similarity against `en-US` and Chinese scores 1.00 against `zh-Hans-CN`, which also proves the Chinese joining rule because the result must contain no spaces. A blank image must return success with no text rather than a failure, and an unknown language tag must fall back to the profile recognizer instead of failing. |
-| Window rendering | Real windows on the desktop are rendered through `PrintWindow`, and each accepted result is checked for opaque pixels, matching bounds, and genuine colour variation. A fabricated all-black image must be rejected by the quality gate. |
-| Graphics capture | The `Windows.Graphics.Capture` route is exercised directly on the covered window. The frame must be `Pbgra32` (so the window's real alpha survived), must contain no capture-border pixels, must report that the border was actually suppressed, and must return the covered window's own colour. The full chain is then run twice: once with the route available, which must select it, and once with it declared unavailable, which must degrade to the GDI render and still return the covered window's own content. |
+| Window rendering | Real windows on the desktop are rendered through `PrintWindow`, and each accepted result is checked for opaque pixels, matching bounds, and genuine colour variation. A fabricated all-black image must be rejected by the quality gate. The probe always contributes one window of its own, painted with a gradient, so this check never depends on what happened to be open: a desktop full of hardware-accelerated browsers (which `PrintWindow` legitimately cannot capture) would otherwise report "nothing rendered" and look like a broken route. That was a real false failure on this machine - two Chrome windows refused, and the check had nothing else to fall back on. |
+| Graphics capture | The `Windows.Graphics.Capture` route is exercised directly on the covered window. The frame must be `Pbgra32` (so the window's real alpha survived), must contain no capture-border pixels, must report that the border was actually suppressed, and must return the covered window's own colour. The full chain is then run twice: once with the route available, which must select it, and once with it declared unavailable, which must degrade to the GDI render and still return the covered window's own content. A session that is not permitted to open a capture session at all reports `E_ACCESSDENIED`; that is logged as a skip with the reason, because it describes the machine rather than the product, and every other failure stays a failure. |
 | Covered window | The decisive check. Two known-coloured windows are stacked exactly on top of each other: the screen capture of that rectangle returns the upper window's colour while every window route returns the lower window's own, and the routes are then repeated through the overlay's own window-selection path. This is what proves occlusion-proof capture rather than merely proving that a capture returned without throwing. |
 | Scrolling capture | A real scrollable window holds 2000 rows, each with a unique colour. The capture is driven end to end and the stitched image is decoded back into row numbers: the sequence must advance by exactly one per row, so a duplicated row, a missing row, and a wrong offset all fail it. The measured run stitches 22 frames into 2000 rows with no gap and no repeat. Before the capture, the probe decodes the first frame to confirm the content really renders one source row per physical pixel, so a failure there is attributed to the probe and not to the stitcher. |
 | Scrolling refusal | The same window is filled with content that repeats every 16 rows, which leaves at least two offsets fitting equally well. The capture must return exactly one frame, an image no taller than the region, and a stated reason. A capture that appended anything here would have produced a long image with silently duplicated content. |
@@ -139,7 +155,7 @@ The following still require human judgement and are intentionally not claimed by
 | OCR text | Recognise a screenshot containing both Chinese and English, confirm the text is copyable and correctly spaced, and confirm a machine without the language pack reports the missing component instead of an empty result. |
 | Settings portability | Export settings, alter a shortcut/cache limit, import the file, review it, then apply it and verify global hotkeys are re-registered. |
 | Diagnostics and privacy | Confirm the report contains only local environment metadata and the local data/log folder can be opened and cleared. |
-| Power and display changes | Test sleep/resume, display reconnect, portrait monitor, and remote desktop reconnect. |
+| Power and display changes | Sleep/resume, display reconnect, portrait monitor, and remote desktop reconnect. The application now listens for all three (`EnvironmentWatchService`), but no automated check can trigger a real suspend or unplug a real monitor, so this stays a manual gate. What to look for: after resuming, the configured shortcuts still fire, and after a resolution change or an unplug, every sticker is still reachable and still on top. |
 | Restricted content | Confirm protected windows, UAC desktop, exclusive fullscreen, HDR, and remote capture show an understandable limitation rather than a fabricated result. |
 
 ## Explicitly deferred feature gates

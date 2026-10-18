@@ -1,0 +1,49 @@
+name: CI
+
+# Builds the solution and runs the desktop-free checks on every push and pull
+# request. The offscreen render harness (tests/PixelPin.UiRender) is deliberately
+# not part of this workflow: it creates real windows, asks DWM about the title bar,
+# and measures the tray area, none of which a headless runner can answer. It stays a
+# local gate, documented in docs/verification.md.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore PixelPin.sln
+
+      - name: Build (Release, warnings as errors)
+        run: dotnet build PixelPin.sln -c Release --no-restore -warnaserror
+
+      - name: Unit checks
+        run: dotnet run --project tests\PixelPin.Tests\PixelPin.Tests.csproj -c Release --no-build
+
+      # The harness writes renders into artifacts/ui-review, which is gitignored. It
+      # exits 0 with an explicit "skipped" line when the runner cannot host windows,
+      # so a green run here always means the checks really ran.
+      - name: Offscreen render checks
+        run: dotnet run --project tests\PixelPin.UiRender -c Debug
+
+      - name: Keep render output for inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-review
+          path: artifacts/ui-review
+          if-no-files-found: ignore
+          retention-days: 7

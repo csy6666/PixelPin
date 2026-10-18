@@ -55,6 +55,19 @@ internal static class Program
 
         var sample = CreateSampleImage(640, 400);
 
+        // Everything below needs a window station it can create windows on. A build
+        // agent can lack one, and failing there would train people to ignore this
+        // check; skipping loudly keeps a real failure distinguishable from a runner
+        // that cannot host WPF at all.
+        if (!CanHostWindows())
+        {
+            Console.WriteLine(
+                "ui-render: skipped - this session cannot create windows "
+                + "(no interactive desktop or window station). Run it on a desktop machine.");
+            application.Shutdown();
+            Environment.Exit(0);
+        }
+
         foreach (var (name, create) in WindowFactories(sample))
         {
             try
@@ -97,6 +110,39 @@ internal static class Program
         // explicitly keeps a stray dispatcher object from holding the process open.
         Environment.Exit(Failures.Count == 0 ? 0 : 1);
         return Failures.Count == 0 ? 0 : 1;
+    }
+
+    /// <summary>
+    /// Proves the session can host a window before the harness commits to a run.
+    /// Showing a 1x1 window off screen and asking for its handle is the cheapest test
+    /// that exercises the same path every render takes; if it throws or returns no
+    /// handle, nothing below could work either.
+    /// </summary>
+    private static bool CanHostWindows()
+    {
+        try
+        {
+            var probe = new Window
+            {
+                Width = 1,
+                Height = 1,
+                Left = -30000,
+                Top = -30000,
+                WindowStyle = WindowStyle.None,
+                ShowInTaskbar = false,
+                ShowActivated = false,
+            };
+            probe.Show();
+            var handle = new System.Windows.Interop.WindowInteropHelper(probe).Handle;
+            probe.Close();
+            Pump(TimeSpan.FromMilliseconds(60));
+            return handle != IntPtr.Zero;
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine($"ui-render: window probe failed - {exception.GetType().Name}: {exception.Message}");
+            return false;
+        }
     }
 
     /// <summary>Every window the redesign covers, in a stable order.</summary>

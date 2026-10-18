@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text;
 using System.Windows;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using Microsoft.Win32;
 using PixelPin.Models;
 using PixelPin.Services;
@@ -23,6 +24,10 @@ public sealed class AppController : IDisposable
 
     private HotKeyService? _hotKeys;
     private TrayService? _tray;
+    private EnvironmentWatchService? _environmentWatch;
+    private DispatcherTimer? _recoveryTimer;
+    private EnvironmentChange _pendingChange;
+    private bool _hotKeysDisabled;
     private SettingsWindow? _settingsWindow;
     private HistoryWindow? _historyWindow;
     private DiagnosticsWindow? _diagnosticsWindow;
@@ -50,6 +55,7 @@ public sealed class AppController : IDisposable
         _logService.Info("应用程序", "PixelPin 已启动。");
         _hotKeys = new HotKeyService();
         var skipHotKeys = launchArguments?.Contains("--no-hotkeys", StringComparer.OrdinalIgnoreCase) == true;
+        _hotKeysDisabled = skipHotKeys;
         if (!skipHotKeys && !RegisterHotKeys(Settings, out var hotKeyError))
         {
             ShowError("PixelPin 快捷键设置", hotKeyError);
@@ -58,6 +64,11 @@ public sealed class AppController : IDisposable
         {
             _logService.Info("应用程序", "已通过启动参数禁用全局快捷键。");
         }
+
+        // A tray application runs for days, so it has to notice when the desktop it
+        // started on is no longer the desktop it is running on.
+        _environmentWatch = new EnvironmentWatchService(_application.Dispatcher);
+        _environmentWatch.Changed += OnEnvironmentChanged;
 
         TrySetStartupRegistration(Settings.StartWithWindows);
 
@@ -350,6 +361,10 @@ public sealed class AppController : IDisposable
 
         _disposed = true;
         _logService.Info("应用程序", "PixelPin 正在退出。");
+        _environmentWatch?.Dispose();
+        _environmentWatch = null;
+        _recoveryTimer?.Stop();
+        _recoveryTimer = null;
         _tray?.Dispose();
         _hotKeys?.Dispose();
 
@@ -360,6 +375,125 @@ public sealed class AppController : IDisposable
 
         _stickers.Clear();
     }
+
+    /// <summary>
+    /// Coalesces environment notifications. A resolution change arrives once per
+    /// monitor, and a dock or undock can deliver a display change and a resume within
+    /// the same second. Each recovery tears the hotkeys down and registers them again,
+    /// which is a moment where a keypress can be lost, so it is worth doing once.
+    /// </summary>
+    private void OnEnvironmentChanged(EnvironmentChange change)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _pendingChange = change;
+        if (_recoveryTimer is null)
+        {
+            _recoveryTimer = new DispatcherTimer(DispatcherPriority.Background, _application.Dispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(400),
+            };
+            _recoveryTimer.Tick += (_, _) =>
+            {
+                _recoveryTimer?.Stop();
+                RecoverEnvironment(_pendingChange);
+            };
+        }
+
+        // Restarting the timer extends the window until the notifications stop.
+        _recoveryTimer.Stop();
+        _recoveryTimer.Start();
+    }
+
+    private void RecoverEnvironment(EnvironmentChange change)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        var reason = Describe(change);
+
+        if (_hotKeys is not null && !_hotKeysDisabled)
+        {
+            // Clearing first is required: RegisterHotKey fails with
+            // ERROR_HOTKEY_ALREADY_REGISTERED if the same id is still live, so a plain
+            // re-register would look like a conflict and report a bogus error.
+            _hotKeys.Clear();
+            if (RegisterHotKeys(Settings, out var error))
+            {
+                _logService.Info("快捷键", $"{reason}后已重新注册全局快捷键。");
+            }
+            else
+            {
+                _logService.Error("快捷键", $"{reason}后重新注册快捷键失败：{error}");
+                _tray?.ShowMessage("PixelPin 快捷键", error);
+            }
+        }
+
+        RestoreStickers(change, reason);
+    }
+
+    /// <summary>
+    /// Pulls stickers back onto the desktop after it changed shape and re-asserts the
+    /// topmost band, which a full-screen application or the lock screen can take away.
+    /// Windows keep running with their image either way; the failure is a window the
+    /// user cannot reach.
+    /// </summary>
+    private void RestoreStickers(EnvironmentChange change, string reason)
+    {
+        if (_stickers.Count == 0)
+        {
+            return;
+        }
+
+        // WPF window coordinates are DIPs relative to the primary monitor, so the
+        // matching desktop rectangle is SystemParameters, not SystemInformation
+        // (which reports physical pixels and would be wrong above 100% scaling).
+        var desktop = new Rect(
+            SystemParameters.VirtualScreenLeft,
+            SystemParameters.VirtualScreenTop,
+            SystemParameters.VirtualScreenWidth,
+            SystemParameters.VirtualScreenHeight);
+
+        var moved = 0;
+        foreach (var sticker in _stickers.ToArray())
+        {
+            var width = double.IsNaN(sticker.Width) ? sticker.ActualWidth : sticker.Width;
+            var height = double.IsNaN(sticker.Height) ? sticker.ActualHeight : sticker.Height;
+            if (width <= 0 || height <= 0)
+            {
+                continue;
+            }
+
+            var current = new Rect(sticker.Left, sticker.Top, width, height);
+            var clamped = StickerGeometry.ClampIntoDesktop(current, desktop);
+            if (Math.Abs(clamped.Left - current.Left) > 0.5 || Math.Abs(clamped.Top - current.Top) > 0.5)
+            {
+                sticker.Left = clamped.Left;
+                sticker.Top = clamped.Top;
+                moved++;
+            }
+
+            sticker.ReassertTopmost();
+        }
+
+        if (moved > 0)
+        {
+            _logService.Info("贴图", $"{reason}后有 {moved} 张贴图被移回可见区域。");
+        }
+    }
+
+    private static string Describe(EnvironmentChange change) => change switch
+    {
+        EnvironmentChange.DisplaySettings => "显示器设置变化",
+        EnvironmentChange.Resumed => "系统从睡眠恢复",
+        EnvironmentChange.Unlocked => "会话解锁",
+        _ => "桌面环境变化",
+    };
 
     private void BeginRegionCaptureCore(CaptureAction? autoComplete)
     {

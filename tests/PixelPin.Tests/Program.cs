@@ -7,6 +7,12 @@ using PixelPin.Services;
 using PixelPin.Tests;
 using PixelPin.Utilities;
 
+// Keep every file these checks write out of the real profile. AppPaths reads this once,
+// so it has to be set before any PixelPin type touches it.
+Environment.SetEnvironmentVariable(
+    AppPaths.DataDirectoryVariable,
+    Path.Combine(Path.GetTempPath(), "PixelPin-checks"));
+
 // The desktop probe needs a real interactive session and is therefore opt-in:
 //   dotnet run --project .\tests\PixelPin.Tests -c Release -- --desktop-probe
 if (args.Contains("--desktop-probe", StringComparer.OrdinalIgnoreCase))
@@ -40,6 +46,7 @@ var tests = new (string Name, Action Run)[]
     ("capture routes put the window surface before the screen crop", TestWindowCapturePlanner),
     ("scrolling capture measures the real offset and refuses to guess", TestScrollStitcher),
     ("sticker geometry preserves aspect ratio while resizing", TestStickerGeometry),
+    ("stickers come back into view when the desktop changes shape", TestStickerClampIntoDesktop),
     ("pixelation averages the region into blocks", TestPixelate),
     ("box blur spreads neighbouring colours", TestBoxBlur),
     ("cropped capture pixels are detached from the full source", TestDetachedCrop),
@@ -389,6 +396,45 @@ static void TestHotKeyRecording()
             $"The recorder produced \"{text}\", which the parser rejected: {error}");
         Expect(parsed.Key == key, $"Round-tripping \"{text}\" changed the key to {parsed.Key}.");
     }
+}
+
+static void TestStickerClampIntoDesktop()
+{
+    var desktop = new Rect(0, 0, 1920, 1080);
+
+    // A window on the monitor that was just unplugged: entirely off the desktop, so
+    // it has to come back rather than stay a running process nobody can see.
+    var stranded = StickerGeometry.ClampIntoDesktop(new Rect(2400, 300, 400, 200), desktop);
+    Expect(stranded.Left >= desktop.Left && stranded.Right <= desktop.Right,
+        $"A sticker left at x={stranded.Left} on a removed monitor did not come back.");
+    Expect(stranded.Top >= desktop.Top && stranded.Bottom <= desktop.Bottom,
+        "A sticker pulled back from a removed monitor landed outside the desktop vertically.");
+    Expect(stranded.Width == 400 && stranded.Height == 200,
+        "Clamping changed the sticker size instead of only its position.");
+
+    // A deliberate overhang is a layout choice, not a bug: half a sticker off the
+    // right edge must survive a resolution change untouched.
+    var overhang = new Rect(1700, 100, 400, 200);
+    var kept = StickerGeometry.ClampIntoDesktop(overhang, desktop);
+    Expect(kept == overhang, "A deliberately overhanging sticker was moved when it was still reachable.");
+
+    // The desktop shrank around a window that is now larger than it. The window keeps
+    // its size (the image is still the image) and its origin moves inside the bounds.
+    var shrunk = StickerGeometry.ClampIntoDesktop(new Rect(0, 0, 1600, 900), new Rect(0, 0, 1024, 768));
+    Expect(shrunk.Left == 0 && shrunk.Top == 0, "A sticker on a shrunken desktop was moved unnecessarily.");
+
+    // Negative origins are real: a monitor to the left of the primary one has negative
+    // coordinates, and clamping must not assume the desktop starts at zero.
+    var leftDesktop = new Rect(-1920, 0, 1920, 1080);
+    var onLeft = StickerGeometry.ClampIntoDesktop(new Rect(-1800, 200, 400, 200), leftDesktop);
+    Expect(onLeft.Left == -1800, "A sticker on a monitor left of the primary one was moved.");
+    var offLeft = StickerGeometry.ClampIntoDesktop(new Rect(600, 200, 400, 200), leftDesktop);
+    Expect(offLeft.Right <= leftDesktop.Right,
+        $"A sticker outside a left-hand-only desktop stayed at x={offLeft.Left}.");
+
+    // Degenerate inputs must be no-ops rather than produce NaN coordinates.
+    var noDesktop = StickerGeometry.ClampIntoDesktop(new Rect(100, 100, 200, 100), new Rect(0, 0, 0, 0));
+    Expect(noDesktop.Left == 100 && noDesktop.Top == 100, "An empty desktop rectangle moved a sticker.");
 }
 
 static void TestStickerAlignment()
